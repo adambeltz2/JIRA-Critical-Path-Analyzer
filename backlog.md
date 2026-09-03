@@ -6,7 +6,6 @@ Format: `[TAG] Description — affected files`
 
 ## Open Items
 
-- [FEATURE] Add Gantt view if due dates exist on issues; must be exportable to CSV (one row per issue with its computed start/end/duration, consistent with how the existing table view is exportable via `buildCSV`) — `jira-critical-path.html`
 - [FEATURE] Add team burndown metrics — `jira-critical-path.html`
 - [FEATURE] Add webhook integration for real-time updates — `jira-proxy-server.js`
 - [FEATURE] Export to Smartsheet/Monday.com for portfolio view — `jira-critical-path.html`
@@ -18,4 +17,3 @@ Format: `[TAG] Description — affected files`
 - [DEBT] `npm audit` still reports one moderate `qs`/`express` transitive DoS advisory after `npm audit fix`; full remediation needs an `express` major-version bump, which is out of scope for a pre-GitHub cleanup pass — `package.json`, `package-lock.json`
 - [FEATURE] No image tag pinning by digest for `node:18-alpine` — consider pinning to a specific digest for reproducible builds once this repo has CI — `Dockerfile`, `docker-compose.yml`
 - [FEATURE][P2] CORS on the proxy is unrestricted (`cors()` with no origin allowlist in `jira-proxy-server.js`) — fine on localhost, but lock it to the frontend's origin before deploying anywhere reachable beyond your machine — `jira-proxy-server.js`
-- [FEATURE] Add a GitHub Actions workflow to auto-build and push the image to Docker Hub on release/tag — deferred per explicit choice to keep `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` out of GitHub secrets for now; publishing is manual (documented in `SETUP.md`) until this is picked up — `.github/workflows`, `Dockerfile`

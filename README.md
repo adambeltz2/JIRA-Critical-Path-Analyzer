@@ -25,8 +25,10 @@ docker run -d --name jira-analyzer -p 3000:3000 -v "$(pwd)/logs:/app/logs" \
   <your-dockerhub-username>/jira-critical-path-analyzer:latest
 ```
 
-No clone needed. See [SETUP.md](SETUP.md#building--publishing-to-docker-hub) for how to
-build and publish this image yourself.
+No clone needed. Images are published automatically on version tags via
+[.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) — see
+[SETUP.md](SETUP.md#building--publishing-to-docker-hub) for the required repo secrets and
+the manual publish steps if you'd rather push by hand.
 
 ### Option B: Clone and build with Docker Compose
 
@@ -79,6 +81,7 @@ does not persist or transform JIRA data.
 
 - **Dependency graph** — interactive canvas (zoom/pan/drag), color-coded nodes (regular / blocking / critical path), edge types for *blocks* vs *relates to*
 - **Table view** — sortable, filterable, exportable to CSV
+- **Gantt view** — shown once any fetched issue has a due date; bars run from each issue's created date to its due date, critical-path issues get a gold dashed outline, exportable to CSV
 - **Critical path calculation** — longest chain of blocking dependencies
 - **Stats** — total issues, dependencies, critical path length, blocked issue count
 

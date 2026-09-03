@@ -409,6 +409,14 @@
             border-radius: 4px;
             background: #fafafa;
         }
+        .gantt-container {
+            width: 100%;
+            max-height: 600px;
+            overflow: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fafafa;
+        }
         .graph-toolbar {
             display: flex;
             align-items: center;
@@ -769,8 +777,12 @@
 
         // Bump on every meaningful change and add an entry below — this is the only place that
         // tracks version history for this single-file app (no build step, not a git repo).
-        const APP_VERSION = '1.9.1';
+        const APP_VERSION = '1.10.0';
         const CHANGELOG = [
+            { version: '1.10.0', date: '2026-09-03', notes: [
+                'Add a Gantt tab (shown once any fetched issue has a due date): one bar per issue, start approximated from its created date, end from its due date, gold dashed outline for critical-path issues, and a "today" reference line',
+                'Add "Export CSV" to the Gantt tab (buildGanttCSV) — one row per issue with its computed start/end/duration, consistent with the existing table export'
+            ]},
             { version: '1.9.1', date: '2026-09-03', notes: [
                 'Fix CSV/formula injection in buildCSV: neutralize cells starting with =/+/-/@ before quoting (affects both manual Export CSV and the auto-saved logs/ export)'
             ]},
@@ -838,6 +850,7 @@
             const [metadataError, setMetadataError] = useState('');
             const [showChangelog, setShowChangelog] = useState(false);
             const graphRef = useRef(null);
+            const ganttRef = useRef(null);
             const logsEndRef = useRef(null);
             const svgSelectionRef = useRef(null);
             const zoomBehaviorRef = useRef(null);
@@ -1405,6 +1418,25 @@
                 return issue.fields.duedate || null;
             };
 
+            // Jira has no native "start date" field, so the Gantt view approximates one from
+            // `created` — the only date every issue reliably has. An issue only gets a Gantt
+            // bar once it has a due date; `created` alone isn't a commitment worth charting.
+            const DAY_MS = 24 * 60 * 60 * 1000;
+            const getGanttSpan = (issue) => {
+                const due = getDueDate(issue);
+                if (!due) return null;
+
+                const start = new Date(issue.fields.created);
+                const end = new Date(due);
+                const spanMs = end.getTime() - start.getTime();
+                // A due date on or before the creation date (backdated or same-day) still gets
+                // a visible one-day bar rather than a zero/negative-width one.
+                const durationDays = Math.max(1, Math.ceil(spanMs / DAY_MS));
+                const renderEnd = spanMs > 0 ? end : new Date(start.getTime() + DAY_MS);
+
+                return { start, end: renderEnd, dueDate: due, durationDays };
+            };
+
             // JIRA issue keys are always PROJECT-123 — the project key is everything before the
             // last hyphen-separated numeric segment.
             const getProjectKey = (issueKey) => {
@@ -1577,6 +1609,45 @@
                 }
             };
 
+            // Gantt view only makes sense once at least one fetched issue has a due date —
+            // otherwise every bar would be a same-day sliver with no real signal.
+            const hasDueDates = issues.some(issue => getDueDate(issue));
+
+            const ganttIssues = filteredIssues
+                .map(issue => {
+                    const span = getGanttSpan(issue);
+                    return span ? { issue, ...span } : null;
+                })
+                .filter(Boolean)
+                .sort((a, b) => a.start - b.start || a.end - b.end);
+
+            // Neutralize leading =/+/-/@ before quoting — Excel/Sheets treats a cell
+            // starting with one of those as the start of a formula/DDE payload, so a
+            // crafted JIRA field value (e.g. a summary of "=cmd|'/c calc'!A1") would
+            // otherwise execute when this export is opened (classic CSV/formula
+            // injection). Prefixing with a leading `'` forces it to render as text
+            // instead, in both Excel and Sheets. Shared by every CSV builder in this file.
+            const escapeCsvCell = (cell) => {
+                const str = String(cell);
+                const sanitized = /^[=+\-@]/.test(str) ? `'${str}` : str;
+                return `"${sanitized.replace(/"/g, '""')}"`;
+            };
+
+            const rowsToCSV = (headers, rows) =>
+                [headers, ...rows].map(row => row.map(escapeCsvCell).join(',')).join('\n');
+
+            const downloadCSV = (csv, filename) => {
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
             // Shared by the manual "Export CSV" button and the automatic post-fetch export —
             // takes explicit issues/deps/path arrays rather than reading component state so it
             // can be called with either the live (filtered/sorted) UI state or the raw fetch result.
@@ -1604,35 +1675,40 @@
                     pathArray.includes(issue.key) ? 'Yes' : 'No'
                 ]);
 
-                // Neutralize leading =/+/-/@ before quoting — Excel/Sheets treats a cell
-                // starting with one of those as the start of a formula/DDE payload, so a
-                // crafted JIRA field value (e.g. a summary of "=cmd|'/c calc'!A1") would
-                // otherwise execute when this export is opened (classic CSV/formula
-                // injection). Prefixing with a leading `'` forces it to render as text
-                // instead, in both Excel and Sheets.
-                const escapeCsvCell = (cell) => {
-                    const str = String(cell);
-                    const sanitized = /^[=+\-@]/.test(str) ? `'${str}` : str;
-                    return `"${sanitized.replace(/"/g, '""')}"`;
-                };
-
-                return [headers, ...rows].map(row =>
-                    row.map(escapeCsvCell).join(',')
-                ).join('\n');
+                return rowsToCSV(headers, rows);
             };
 
             const exportCSV = () => {
                 const csv = buildCSV(sortedIssues, dependencies, criticalPath);
+                downloadCSV(csv, `jira-analysis-${new Date().toISOString().split('T')[0]}.csv`);
+            };
 
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `jira-analysis-${new Date().toISOString().split('T')[0]}.csv`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+            // One row per issue with its computed Gantt start/end/duration, consistent with
+            // how the table view is exportable via buildCSV — same date range the bars draw.
+            const buildGanttCSV = (ganttArray) => {
+                const headers = [
+                    'Key', 'Summary', 'Type', 'Status', 'Assignee',
+                    'Start Date', 'Due Date', 'End Date', 'Duration (days)', 'On Critical Path'
+                ];
+                const rows = ganttArray.map(({ issue, start, dueDate, end, durationDays }) => [
+                    issue.key,
+                    issue.fields.summary,
+                    issue.fields.issuetype.name,
+                    getIssueStatus(issue),
+                    issue.fields.assignee?.displayName || 'Unassigned',
+                    start.toISOString().split('T')[0],
+                    dueDate,
+                    end.toISOString().split('T')[0],
+                    durationDays,
+                    isOnCriticalPath(issue.key) ? 'Yes' : 'No'
+                ]);
+
+                return rowsToCSV(headers, rows);
+            };
+
+            const exportGanttCSV = () => {
+                const csv = buildGanttCSV(ganttIssues);
+                downloadCSV(csv, `jira-gantt-${new Date().toISOString().split('T')[0]}.csv`);
             };
 
             // Compute the full connected component (lineage) reachable from a given issue —
@@ -1932,6 +2008,97 @@
                     if (!event.active) simulation.alphaTarget(0);
                     d.fx = null;
                     d.fy = null;
+                }
+            };
+
+            // Render Gantt timeline
+            useEffect(() => {
+                if (activeTab === 'gantt' && ganttRef.current) {
+                    renderGantt();
+                }
+            }, [activeTab, ganttIssues, criticalPath]);
+
+            const renderGantt = () => {
+                if (!ganttRef.current) return;
+
+                ganttRef.current.innerHTML = '';
+
+                if (ganttIssues.length === 0) return;
+
+                const rowHeight = 28;
+                const margin = { top: 30, right: 20, bottom: 10, left: 140 };
+                const width = Math.max(ganttRef.current.clientWidth, 600);
+                const height = ganttIssues.length * rowHeight + margin.top + margin.bottom;
+
+                const minStart = d3.min(ganttIssues, d => d.start);
+                const maxEnd = d3.max(ganttIssues, d => d.end);
+
+                const svg = d3.select(ganttRef.current)
+                    .append('svg')
+                    .attr('width', width)
+                    .attr('height', height);
+
+                const xScale = d3.scaleTime()
+                    .domain([minStart, maxEnd])
+                    .range([margin.left, width - margin.right])
+                    .nice();
+
+                // Grid + date axis
+                svg.append('g')
+                    .attr('transform', `translate(0, ${margin.top})`)
+                    .call(d3.axisTop(xScale).ticks(Math.min(ganttIssues.length, 10)).tickSize(-(height - margin.top - margin.bottom)))
+                    .call(g => g.select('.domain').remove())
+                    .call(g => g.selectAll('.tick line').attr('stroke', '#eee'))
+                    .call(g => g.selectAll('.tick text').attr('font-size', '11px').attr('fill', '#666'));
+
+                const rows = svg.selectAll('g.gantt-row')
+                    .data(ganttIssues)
+                    .enter()
+                    .append('g')
+                    .attr('class', 'gantt-row')
+                    .attr('transform', (d, i) => `translate(0, ${margin.top + i * rowHeight})`);
+
+                // Row label — the issue key, click to open its detail panel
+                rows.append('text')
+                    .attr('x', margin.left - 10)
+                    .attr('y', rowHeight / 2)
+                    .attr('dy', '.35em')
+                    .attr('text-anchor', 'end')
+                    .attr('font-size', '12px')
+                    .attr('font-weight', d => isOnCriticalPath(d.issue.key) ? '700' : '400')
+                    .attr('fill', '#0052CC')
+                    .style('cursor', 'pointer')
+                    .on('click', (event, d) => setSelectedIssue(d.issue.key))
+                    .text(d => d.issue.key);
+
+                // Bars — fill = status (same palette as the graph/table views), gold dashed
+                // outline = on the critical path.
+                rows.append('rect')
+                    .attr('x', d => xScale(d.start))
+                    .attr('y', 4)
+                    .attr('width', d => Math.max(2, xScale(d.end) - xScale(d.start)))
+                    .attr('height', rowHeight - 12)
+                    .attr('rx', 3)
+                    .attr('fill', d => STATUS_COLORS[getStatusBadgeClass(getIssueStatus(d.issue))] || STATUS_COLORS['status-todo'])
+                    .attr('stroke', d => isOnCriticalPath(d.issue.key) ? '#FFC107' : 'none')
+                    .attr('stroke-width', d => isOnCriticalPath(d.issue.key) ? 2 : 0)
+                    .attr('stroke-dasharray', d => isOnCriticalPath(d.issue.key) ? '3,3' : '0')
+                    .style('cursor', 'pointer')
+                    .on('click', (event, d) => setSelectedIssue(d.issue.key))
+                    .append('title')
+                    .text(d => `${d.issue.key}: ${d.issue.fields.summary}\nDue ${d.dueDate}\n${d.durationDays}d`);
+
+                // "Today" reference line, only when it falls within the plotted range
+                const today = new Date();
+                if (today >= minStart && today <= maxEnd) {
+                    svg.append('line')
+                        .attr('x1', xScale(today))
+                        .attr('x2', xScale(today))
+                        .attr('y1', margin.top)
+                        .attr('y2', height - margin.bottom)
+                        .attr('stroke', '#C62828')
+                        .attr('stroke-width', 1.5)
+                        .attr('stroke-dasharray', '4,2');
                 }
             };
 
@@ -2244,6 +2411,14 @@
                                 >
                                     🔗 Cross-Project ({crossProjectDependencies.length})
                                 </button>
+                                {hasDueDates && (
+                                    <button
+                                        className={`tab-button ${activeTab === 'gantt' ? 'active' : ''}`}
+                                        onClick={() => setActiveTab('gantt')}
+                                    >
+                                        📅 Gantt ({ganttIssues.length})
+                                    </button>
+                                )}
                             </div>
 
                             <div className="tab-content">
@@ -2482,6 +2657,44 @@
                                                     </tbody>
                                                 </table>
                                             </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {activeTab === 'gantt' && (
+                                    <div>
+                                        <p style={{ fontSize: '13px', color: '#666', marginBottom: '15px' }}>
+                                            One bar per issue with a due date — start is approximated from the issue's created date
+                                            (Jira has no native start-date field), end is its due date. {ganttIssues.length} issue(s) shown,
+                                            sorted by start date.
+                                        </p>
+                                        <div className="legend">
+                                            <div className="legend-item">
+                                                <svg width="16" height="16"><rect x="1" y="4" width="14" height="8" rx="2" fill="none" stroke="#FFC107" strokeWidth="2" strokeDasharray="2,2" /></svg>
+                                                <span>On Critical Path</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <svg width="20" height="16"><line x1="10" y1="0" x2="10" y2="16" stroke="#C62828" strokeWidth="1.5" strokeDasharray="3,2" /></svg>
+                                                <span>Today</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <span>Bar fill = status (same palette as Table/Graph)</span>
+                                            </div>
+                                        </div>
+                                        <div className="controls">
+                                            <input
+                                                type="text"
+                                                className="filter-input"
+                                                placeholder="Filter by key, summary, or assignee..."
+                                                value={filterText}
+                                                onChange={(e) => setFilterText(e.target.value)}
+                                            />
+                                            <button onClick={exportGanttCSV} disabled={ganttIssues.length === 0}>📥 Export CSV</button>
+                                        </div>
+                                        {ganttIssues.length === 0 ? (
+                                            <div className="status-message">No issues with a due date match the current filter.</div>
+                                        ) : (
+                                            <div className="gantt-container" ref={ganttRef}></div>
                                         )}
                                     </div>
                                 )}
