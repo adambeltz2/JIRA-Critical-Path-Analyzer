@@ -18,29 +18,22 @@ A production-ready tool to extract JIRA dependencies, visualize relationships, a
 
 ## Quick start
 
-### Option A: Docker Hub
-
-```bash
-docker run -d --name jira-analyzer -p 3000:3000 -v "$(pwd)/logs:/app/logs" \
-  <your-dockerhub-username>/jira-critical-path-analyzer:latest
-```
-
-No clone needed. See [SETUP.md](SETUP.md#building--publishing-to-docker-hub) for how to
-build and publish this image yourself.
-
-### Option B: Clone and build with Docker Compose
+### Clone the repo
 
 ```bash
 git clone https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer.git
 cd JIRA-Critical-Path-Analyzer
+```
+
+Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose (bundled with Docker Desktop) to run the steps below. See [SETUP.md](SETUP.md) if you'd rather run it standalone with local Node instead of Docker.
+
+### Run it
+
+```bash
 docker compose up -d --remove-orphans
 ```
 
-Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose (bundled with Docker Desktop). See [SETUP.md](SETUP.md) if you'd rather run it standalone with local Node instead of Docker.
-
-### Then
-
-Open `http://localhost:3000` and fill in:
+Then open `http://localhost:3000` and fill in:
 - **Proxy URL:** pre-filled with the page's own origin — leave as-is
 - **Tenant URL:** your Atlassian domain, e.g. `https://yourcompany.atlassian.net`
 - **Email / API Token:** from [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
