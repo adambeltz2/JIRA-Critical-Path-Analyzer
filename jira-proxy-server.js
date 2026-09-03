@@ -19,6 +19,18 @@ app.use(cors());
 // issues) comfortably exceeds that.
 app.use(express.json({ limit: '100mb' }));
 
+// Serve the single-file client at the root. Deliberately not express.static(__dirname) —
+// that would also expose package.json, this server's own source, and anything else dropped
+// in this directory. res.sendFile only ever serves this one named file.
+app.get('/', (req, res) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'X-XSS-Protection': '1; mode=block'
+  });
+  res.sendFile(path.join(__dirname, 'jira-critical-path.html'));
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });

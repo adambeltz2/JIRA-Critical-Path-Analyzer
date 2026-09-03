@@ -24,14 +24,12 @@ Act as a senior software engineer and technical investigator. Optimize for corre
 
 ## 5. Technology Stack & Environment Rules
 *   **Primary Ecosystem:**
-    - Node.js 18 (Alpine base image) on the server side (`jira-proxy-server.js`, `jira-proxy-server-v2.js`), using CommonJS with Express.
+    - Node.js 18 (Alpine base image) on the server side (`jira-proxy-server.js`), using CommonJS with Express. It also serves the client at `GET /` (see Infrastructure below) — this repo ships as a single container/image, not split proxy+frontend services.
     - Vanilla single-file HTML/CSS/JavaScript on the client side (`jira-critical-path.html`) — no build step, no framework, no bundler. Keep it that way; don't introduce a frontend framework or bundler without explicit instruction.
 *   **Infrastructure:**
-    - Docker Compose (`docker-compose.yml`) orchestrates two services on a shared `jira-analyzer` bridge network:
-      - `jira-proxy` — built from `Dockerfile.jira-proxy`, exposes port 3000, has a `/health` healthcheck, `jira-frontend` waits on it via `condition: service_healthy`.
-      - `jira-frontend` — `nginx:alpine` serving `jira-critical-path.html` as `index.html`, configured via `nginx.conf`, exposes port 8080.
-    - Container/service names, ports (3000 for proxy, 8080 for frontend), and the healthcheck-gated startup order are load-bearing — do not rename or reorder without checking `nginx.conf` and `SETUP.md` for references.
-    - `SETUP.md` references a `docker-compose.jira-analyzer.yml` filename that does not match the actual `docker-compose.yml` in this repo (tracked in `backlog.md`); treat `docker-compose.yml` as the source of truth for this repo.
+    - Single container, single image: `Dockerfile` builds a `node:18-alpine` image containing `jira-proxy-server.js` + `jira-critical-path.html`. `GET /` returns the HTML client (served via `res.sendFile`, not `express.static`, so no other file in the working directory is exposed); `POST /api/*` and `GET /health` are the proxy API on the same port (3000).
+    - `docker-compose.yml` runs that single `jira-analyzer` service (port 3000, `/health`-gated healthcheck, `./logs:/app/logs` bind mount). Container/service name and port 3000 are load-bearing — do not rename or reorder without checking `SETUP.md` for references.
+    - A prior two-container split (`Dockerfile.jira-proxy` + `nginx.conf`, proxy and frontend as separate services) has been replaced by the single-image setup above — those two files no longer exist in this repo.
 *   **Automation & Data:**
     - The proxy server is a thin pass-through to the JIRA Cloud REST API v3 (Basic Auth via HTTPS, using email + API token), solely to work around browser CORS restrictions. It does not cache or transform JIRA data beyond what's needed to serve the client. One deliberate exception: completed runs are auto-exported to CSV and written to `logs/` (see `/api/save-export` below) so a finished analysis always leaves an artifact on disk.
     - Known endpoints: `POST /api/jira-search`, `POST /api/jira-metadata`, `POST /api/validate-credentials`, `POST /api/save-export`, `GET /health`. Preserve this contract — the HTML client depends on these exact routes and payload shapes (see `SETUP.md` API Reference section).

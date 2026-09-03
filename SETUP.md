@@ -7,7 +7,7 @@ A production-ready tool to extract JIRA dependencies, visualize relationships, a
 ```
 ┌─────────────────────────┐
 │  Browser / Client       │
-│  (jira-critical-path.html)
+│  (served from GET /)    │
 └────────────┬────────────┘
              │
              │ POST /api/jira-search
@@ -16,6 +16,8 @@ A production-ready tool to extract JIRA dependencies, visualize relationships, a
 ┌────────────▼────────────┐
 │  Node.js Proxy Server   │
 │  (port 3000)            │
+│  serves the HTML client │
+│  AND the /api/* routes  │
 └────────────┬────────────┘
              │
              │ Basic Auth via HTTPS
@@ -26,113 +28,170 @@ A production-ready tool to extract JIRA dependencies, visualize relationships, a
 └─────────────────────────┘
 ```
 
+This ships as **one container / one image** — `jira-proxy-server.js` serves the static
+`jira-critical-path.html` client at `GET /` in addition to the `/api/*` proxy routes, so
+there's no separate frontend container or nginx to run alongside it.
+
 ## Setup Options
 
-### Option 1: Docker Compose (Recommended)
+### Option 1: Docker Hub (Recommended)
+
+Pull and run the published image directly — no clone or build required.
+
+```bash
+docker run -d \
+  --name jira-analyzer \
+  -p 3000:3000 \
+  -v "$(pwd)/logs:/app/logs" \
+  --restart unless-stopped \
+  <your-dockerhub-username>/jira-critical-path-analyzer:latest
+```
+
+Then open `http://localhost:3000` — the Proxy URL field is pre-filled with the page's own
+origin, so you only need to fill in your Tenant URL, email, API token, and JQL before
+clicking **Fetch & Analyze**.
+
+See [Building & Publishing to Docker Hub](#building--publishing-to-docker-hub) below for how
+this image gets built and pushed in the first place.
+
+### Option 2: Docker Compose (build locally)
 
 **Prerequisites:**
 - Docker & Docker Compose
-- Git (optional, to clone)
+- Git (to clone this repo)
 
 **Steps:**
 
-1. **Create a project directory:**
+1. **Clone the repo:**
    ```bash
-   mkdir jira-analyzer && cd jira-analyzer
+   git clone https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer.git
+   cd JIRA-Critical-Path-Analyzer
    ```
 
-2. **Copy these files into the directory:**
-   - `jira-critical-path.html`
-   - `jira-proxy-server.js`
-   - `package.json`
-   - `Dockerfile.jira-proxy`
-   - `docker-compose.jira-analyzer.yml`
-   - `nginx.conf`
-
-3. **Build and run:**
+2. **Build and run:**
    ```bash
-   docker-compose -f docker-compose.jira-analyzer.yml up -d
+   docker compose up -d --remove-orphans
    ```
 
-4. **Verify containers are running:**
+   This builds the image from the repo's `Dockerfile` and starts the single `jira-analyzer`
+   service on port 3000, with `./logs` bind-mounted to `/app/logs` in the container.
+
+3. **Verify the container is running:**
    ```bash
-   docker ps | grep jira-
+   docker compose ps
    ```
 
-   You should see:
-   - `jira-proxy` (Node.js) — port 3000 (this repo's `docker-compose.yml` maps it to host port **3002** — 3000 was already taken by another container)
-   - `jira-frontend` (Nginx) — port 8080 (mapped to host port **8085** here — 8080 was already taken by another container)
-
-   > If ports 3000/8080 are free on your machine, feel free to change the host-side mapping back in `docker-compose.yml`. Check what's free first: `lsof -i :3000` / `lsof -i :8080`.
-
-5. **Access the app:**
-   - Open browser: `http://localhost:8085`
-   - Fill in form with:
-     - **Proxy URL:** `http://jira-proxy:3000` (internal Docker network) or `http://localhost:3002` from your browser
+4. **Access the app:**
+   - Open browser: `http://localhost:3000`
+   - The **Proxy URL** field is pre-filled with the page's own origin (`http://localhost:3000`)
+     — leave it as-is.
+   - Fill in:
      - **Tenant URL:** `https://subdomain.atlassian.net`
      - **Email:** Your Atlassian email
      - **API Token:** Your JIRA API token (from https://id.atlassian.com/manage-profile/security/api-tokens)
      - **JQL:** `project = TMD` or leave default
    - Click **"Fetch & Analyze"**
 
-6. **Stop containers:**
+5. **Stop the container:**
    ```bash
-   docker-compose -f docker-compose.jira-analyzer.yml down
+   docker compose down
    ```
 
-### Option 2: Standalone Node.js Proxy (for existing Docker Compose stack)
+> If port 3000 is already taken on your machine, change the host-side mapping in
+> `docker-compose.yml` (e.g. `"3002:3000"`) — the container always listens on 3000
+> internally.
 
-If you want to add the proxy to your existing Proxmox/Docker Compose stack:
-
-1. **Copy `jira-proxy-server.js` and `package.json` to your stack directory**
-
-2. **Add to your main `docker-compose.yml`:**
-   ```yaml
-   jira-proxy:
-     build:
-       context: .
-       dockerfile: Dockerfile.jira-proxy
-     ports:
-       - "3000:3000"
-     restart: unless-stopped
-     networks:
-       - your-network-name
-   ```
-
-3. **Open the HTML file locally or serve it via your existing Nginx/web server**
-
-4. **In the app form, set Proxy URL to:**
-   - `http://jira-proxy:3000` (if same Docker network)
-   - `http://localhost:3000` (if running locally in browser)
-
-### Option 3: Local Node.js (for testing)
+### Option 3: Local Node.js (for testing, no Docker)
 
 **Prerequisites:**
-- Node.js 16+
+- Node.js 18+
 - npm
 
 **Steps:**
 
 1. **Install dependencies:**
    ```bash
-   npm install express cors node-fetch
+   npm install
    ```
 
-2. **Start the proxy:**
+2. **Start the server:**
    ```bash
    node jira-proxy-server.js
    ```
 
    Output: `🔗 JIRA Proxy Server listening on http://localhost:3000`
 
-3. **Open the HTML file in your browser:**
-   - Locally: `file:///path/to/jira-critical-path.html`
-   - Or serve via any HTTP server (e.g., `python -m http.server 8000`)
+3. **Open `http://localhost:3000` in your browser** — the server serves the client itself,
+   so there's nothing else to open or run.
 
 4. **In the form:**
-   - Proxy URL: `http://localhost:3000`
+   - Proxy URL is pre-filled with `http://localhost:3000`
    - Fill in your tenant URL, email, and API token
    - Click "Fetch & Analyze"
+
+## Building & Publishing to Docker Hub
+
+These are the exact steps to build this repo's image and push it to your own Docker Hub
+account, so `docker run <your-username>/jira-critical-path-analyzer` (Option 1 above) works
+for anyone.
+
+**Prerequisites:**
+- Docker installed and running
+- A [Docker Hub](https://hub.docker.com/) account
+- A repository created on Docker Hub (e.g. `<your-username>/jira-critical-path-analyzer`) —
+  or just push once and Docker Hub will offer to create it for you
+
+**Steps:**
+
+1. **Clone the repo** (if you haven't already):
+   ```bash
+   git clone https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer.git
+   cd JIRA-Critical-Path-Analyzer
+   ```
+
+2. **Log in to Docker Hub:**
+   ```bash
+   docker login
+   ```
+
+3. **Build the image**, tagged with your Docker Hub username/repo:
+   ```bash
+   docker build -t <your-dockerhub-username>/jira-critical-path-analyzer:latest .
+   ```
+
+   To also tag a specific version (recommended — pin to the app version in
+   `jira-critical-path.html`'s `APP_VERSION` constant, e.g. `1.9.0`):
+   ```bash
+   docker build \
+     -t <your-dockerhub-username>/jira-critical-path-analyzer:latest \
+     -t <your-dockerhub-username>/jira-critical-path-analyzer:1.9.0 \
+     .
+   ```
+
+4. **(Optional) Test the image locally before pushing:**
+   ```bash
+   docker run -d --name jira-analyzer-test -p 3000:3000 \
+     <your-dockerhub-username>/jira-critical-path-analyzer:latest
+   curl http://localhost:3000/health
+   docker stop jira-analyzer-test && docker rm jira-analyzer-test
+   ```
+
+5. **Push to Docker Hub:**
+   ```bash
+   docker push <your-dockerhub-username>/jira-critical-path-analyzer:latest
+   docker push <your-dockerhub-username>/jira-critical-path-analyzer:1.9.0
+   ```
+
+6. **Verify:** visit `https://hub.docker.com/r/<your-dockerhub-username>/jira-critical-path-analyzer`
+   and confirm the tag(s) are listed.
+
+Anyone can now run it with the `docker run` command from Option 1, substituting your
+Docker Hub username.
+
+> This is a manual publish flow. If you'd rather have this happen automatically on every
+> push or release, that needs a GitHub Actions workflow with `DOCKERHUB_USERNAME` /
+> `DOCKERHUB_TOKEN` repo secrets — tracked as a deferred item in `backlog.md` since it
+> wasn't set up here (adding CI credentials is its own explicit decision).
 
 ## Getting Your JIRA API Token
 
@@ -208,10 +267,11 @@ order by updated DESC
 ### Error: "NetworkError when attempting to fetch resource"
 **Cause:** CORS issue — HTML is trying to call JIRA API directly
 **Fix:** Use the proxy server! Make sure:
-1. Proxy is running on port 3000
-2. Proxy URL field is filled in form
-3. If running locally: `http://localhost:3000`
-4. If Docker: `http://jira-proxy:3000` or network hostname
+1. The server is running on port 3000
+2. Proxy URL field is filled in form (pre-filled with the page's own origin by default,
+   since the same server serves both the client and the API)
+3. If you changed it away from the default, point it back at wherever this server is
+   actually reachable, e.g. `http://localhost:3000`
 
 ### Error: "JIRA API error: 401"
 **Cause:** Invalid credentials
@@ -226,11 +286,11 @@ order by updated DESC
 1. User account may not have access to some projects
 2. Try a JQL filter: `project = TMD` (just one project)
 
-### Proxy container won't start
+### Container won't start
 **Fix:**
-1. Check logs: `docker logs jira-proxy`
+1. Check logs: `docker logs jira-analyzer` (or `docker compose logs -f`)
 2. Ensure port 3000 is available: `lsof -i :3000`
-3. Rebuild: `docker-compose -f docker-compose.jira-analyzer.yml build --no-cache`
+3. Rebuild: `docker compose build --no-cache`
 
 ### Graph rendering is slow (1000+ issues)
 **Fix:**
@@ -255,12 +315,23 @@ order by updated DESC
 
 ### POST /api/jira-search
 
-Fetch and search JIRA issues with dependencies. This endpoint always returns the **entire**
-matching result set in a single response — it pages internally against JIRA using
-`nextPageToken` until JIRA reports the last page, then returns everything at once. It does
-not support a per-call `startAt`/page slice; `maxResults` only controls the page size used
-for each internal request to JIRA, not how much is returned to the caller. Callers should
-make one request and not loop.
+Fetch and search JIRA issues with dependencies. This endpoint always fetches the **entire**
+matching result set — it pages internally against JIRA using `nextPageToken` until JIRA
+reports the last page. It does not support a per-call `startAt`/page slice; `maxResults`
+only controls the page size used for each internal request to JIRA, not how much is
+returned to the caller. Callers should make one request and not loop.
+
+The response is **newline-delimited JSON** (one JSON object per line), not a single JSON
+body, since JIRA's pagination is sequential and can take a while on a large tenant — this
+lets the caller show real progress instead of waiting silently:
+- `{"type":"progress","page":N,"issuesThisPage":n,"issuesSoFar":m}` — one line per
+  internally-fetched JIRA page.
+- `{"type":"done","issues":[...],"total":n,"startAt":0,"maxResults":n,"names":{...}}` — the
+  final line once pagination completes, carrying the full merged result set.
+- `{"type":"error","error":"...","details":{...}}` — if a page *after* the first fails
+  (status is already committed as 200 by then, so the failure can't be reported via HTTP
+  status; this line is the only signal). A failure on the very first page instead returns a
+  normal non-2xx JSON error response (nothing has streamed yet in that case).
 
 **Request:**
 ```json
@@ -273,35 +344,11 @@ make one request and not loop.
 }
 ```
 
-**Response:**
-```json
-{
-  "startAt": 0,
-  "maxResults": 237,
-  "total": 237,
-  "names": {
-    "customfield_10020": "Sprint"
-  },
-  "issues": [
-    {
-      "key": "TMD-837",
-      "fields": {
-        "summary": "Create Attribute: Default Stone Value",
-        "duedate": "2024-06-30",
-        "customfield_10020": [
-          { "id": 42, "name": "Sprint 23", "state": "active", "endDate": "2024-06-28T00:00:00.000Z" }
-        ],
-        "issuelinks": [
-          {
-            "type": { "name": "Relates" },
-            "outwardIssue": { "key": "TMD-838", ... }
-          }
-        ],
-        ...
-      }
-    }
-  ]
-}
+**Response (streamed, one JSON object per line):**
+```
+{"type":"progress","page":1,"issuesThisPage":5000,"issuesSoFar":5000}
+{"type":"progress","page":2,"issuesThisPage":237,"issuesSoFar":5237}
+{"type":"done","startAt":0,"maxResults":5237,"total":5237,"names":{"customfield_10020":"Sprint"},"issues":[{"key":"TMD-837","fields":{"summary":"Create Attribute: Default Stone Value","duedate":"2024-06-30","customfield_10020":[{"id":42,"name":"Sprint 23","state":"active","endDate":"2024-06-28T00:00:00.000Z"}],"issuelinks":[{"type":{"name":"Relates"},"outwardIssue":{"key":"TMD-838"}}]}]}
 ```
 
 ### POST /api/jira-metadata
@@ -390,13 +437,15 @@ server-side (basename only, must match `*.csv`) to prevent writing outside `logs
 
 If deploying to a cloud server or internal server:
 
-1. **Use HTTPS** — configure Nginx with SSL cert
-2. **Rate limit** the proxy endpoint
-3. **Add authentication** to proxy (optional API key)
-4. **Store proxy & frontend on separate IPs/domains**
+1. **Use HTTPS** — put a reverse proxy (Nginx, Caddy, Traefik) in front of this container
+   for TLS; the container itself only speaks plain HTTP on 3000
+2. **Rate limit** the endpoint
+3. **Add authentication** (optional API key)
+4. **Lock down CORS** to your actual frontend origin instead of the current wide-open default
 5. **Monitor logs** for suspicious activity
 
-Example: Deploy to an internal server via Kubernetes/container orchestration.
+Example: Deploy to an internal server via Kubernetes/container orchestration, pulling the
+image built in [Building & Publishing to Docker Hub](#building--publishing-to-docker-hub).
 
 ## Next Steps
 
@@ -410,7 +459,7 @@ Example: Deploy to an internal server via Kubernetes/container orchestration.
 
 Issues? Check:
 1. Browser console (F12 → Console tab) for JavaScript errors
-2. Proxy logs: `docker logs jira-proxy`
+2. Container logs: `docker logs jira-analyzer`
 3. Verify JIRA API token is valid
 4. Try a simple JQL: `project = TMD limit 10`
 
