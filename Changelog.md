@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.1.1] - 2026-09-03
+
+### Fixed
+- CSV/formula injection in `buildCSV` (`jira-critical-path.html`): a cell value starting
+  with `=`, `+`, `-`, or `@` is now prefixed with a leading `'` before quoting, so a crafted
+  JIRA field value (e.g. a summary of `=HYPERLINK(...)`) renders as inert text instead of
+  executing as a formula/DDE payload when the export is opened in Excel/Sheets. Fixes both
+  the manual "Export CSV" button and the automatic post-run export written to `logs/` via
+  `/api/save-export`, since both go through the same `buildCSV` function.
+
 ## [1.1.0] - 2026-09-03
 
 ### Changed
