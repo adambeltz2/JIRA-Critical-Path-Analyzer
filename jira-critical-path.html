@@ -769,8 +769,11 @@
 
         // Bump on every meaningful change and add an entry below — this is the only place that
         // tracks version history for this single-file app (no build step, not a git repo).
-        const APP_VERSION = '1.9.0';
+        const APP_VERSION = '1.9.1';
         const CHANGELOG = [
+            { version: '1.9.1', date: '2026-09-03', notes: [
+                'Fix CSV/formula injection in buildCSV: neutralize cells starting with =/+/-/@ before quoting (affects both manual Export CSV and the auto-saved logs/ export)'
+            ]},
             { version: '1.9.0', date: '2026-09-03', notes: [
                 'Default Proxy URL to the current page origin (the proxy now serves this file too, in the single-image deployment)',
                 'Serve this file from the proxy server at GET / — no separate frontend container needed'
@@ -1601,8 +1604,20 @@
                     pathArray.includes(issue.key) ? 'Yes' : 'No'
                 ]);
 
+                // Neutralize leading =/+/-/@ before quoting — Excel/Sheets treats a cell
+                // starting with one of those as the start of a formula/DDE payload, so a
+                // crafted JIRA field value (e.g. a summary of "=cmd|'/c calc'!A1") would
+                // otherwise execute when this export is opened (classic CSV/formula
+                // injection). Prefixing with a leading `'` forces it to render as text
+                // instead, in both Excel and Sheets.
+                const escapeCsvCell = (cell) => {
+                    const str = String(cell);
+                    const sanitized = /^[=+\-@]/.test(str) ? `'${str}` : str;
+                    return `"${sanitized.replace(/"/g, '""')}"`;
+                };
+
                 return [headers, ...rows].map(row =>
-                    row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+                    row.map(escapeCsvCell).join(',')
                 ).join('\n');
             };
 
