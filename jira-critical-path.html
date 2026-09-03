@@ -1053,17 +1053,25 @@
                     // re-trigger a full server-side re-fetch each time and duplicate the results.
                     addLog(`Fetching all matching issues (this can take a while for large result sets)...`, 'info');
 
-                    // The single request above can sit silent for many minutes on a large tenant (the proxy
-                    // doesn't stream progress back), which reads as "stuck" in the UI. Emit a heartbeat so
-                    // the log keeps visibly ticking for as long as the request is actually in flight.
+                    // The proxy streams progress back as newline-delimited JSON — one JSON object per
+                    // line, {type:'progress', page, issuesSoFar} after each internally-fetched JIRA page,
+                    // then a single {type:'done', issues:[...], ...} once pagination completes (or
+                    // {type:'error', ...} if a later page fails) — so this shows real page-by-page
+                    // progress. A heartbeat still covers the gaps between progress lines, since a single
+                    // page (fields=*all across thousands of issues) can itself take a while.
                     const fetchStartedAt = Date.now();
+                    let lastProgressAt = Date.now();
+                    let lastPageSeen = 0;
+                    let lastIssuesSoFar = 0;
                     const heartbeatId = setInterval(() => {
-                        addLog(`Still waiting on JIRA... (${formatElapsed(Date.now() - fetchStartedAt)} elapsed)`, 'info');
+                        if (Date.now() - lastProgressAt < 15000) return;
+                        const pageSuffix = lastPageSeen > 0 ? ` (last update: page ${lastPageSeen}, ${lastIssuesSoFar} issue(s) so far)` : '';
+                        addLog(`Still waiting on JIRA... (${formatElapsed(Date.now() - fetchStartedAt)} elapsed)${pageSuffix}`, 'info');
                     }, 15000);
 
-                    let response;
+                    let data;
                     try {
-                        response = await fetch(`${proxyUrl}/api/jira-search`, {
+                        const response = await fetch(`${proxyUrl}/api/jira-search`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
@@ -1077,18 +1085,54 @@
                                 maxResults: maxResults
                             })
                         });
+
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            const msg = errorData.error || `API error: ${response.status}`;
+                            addLog(`Proxy returned an error: ${msg}`, 'error');
+                            throw new Error(msg);
+                        }
+
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buffer = '';
+                        let finalData = null;
+
+                        const handleLine = (line) => {
+                            if (!line.trim()) return;
+                            const msg = JSON.parse(line);
+                            if (msg.type === 'progress') {
+                                lastProgressAt = Date.now();
+                                lastPageSeen = msg.page;
+                                lastIssuesSoFar = msg.issuesSoFar;
+                                addLog(`Fetched page ${msg.page} — ${msg.issuesSoFar} issue(s) so far...`, 'info');
+                            } else if (msg.type === 'done') {
+                                finalData = msg;
+                            } else if (msg.type === 'error') {
+                                throw new Error(msg.error || 'JIRA API error during search');
+                            }
+                        };
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop();
+                            lines.forEach(handleLine);
+                        }
+                        if (buffer.trim()) {
+                            handleLine(buffer);
+                        }
+
+                        if (!finalData) {
+                            throw new Error('Search ended without a final result — the proxy may have crashed mid-stream.');
+                        }
+                        data = finalData;
                     } finally {
                         clearInterval(heartbeatId);
                     }
 
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        const msg = errorData.error || `API error: ${response.status}`;
-                        addLog(`Proxy returned an error: ${msg}`, 'error');
-                        throw new Error(msg);
-                    }
-
-                    const data = await response.json();
                     const allIssues = data.issues;
                     if (data.names) {
                         setFieldNames(data.names);
