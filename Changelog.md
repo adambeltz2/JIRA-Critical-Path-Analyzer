@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.0] - 2026-09-03
+
+### Added
+- GitHub Actions workflow (`.github/workflows/docker-publish.yml`) that builds and pushes
+  `adambeltz/jira-critical-path-analyzer:latest` and `:<version>` to Docker Hub whenever a
+  `v*` tag is pushed, using `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` repo secrets. The manual
+  `docker build`/`docker push` steps in `SETUP.md` remain as a fallback.
+
 ## [1.2.0] - 2026-09-03
 
 ### Added

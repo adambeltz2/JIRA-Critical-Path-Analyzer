@@ -81,6 +81,7 @@ does not persist or transform JIRA data.
 
 - **Dependency graph** — interactive canvas (zoom/pan/drag), color-coded nodes (regular / blocking / critical path), edge types for *blocks* vs *relates to*
 - **Table view** — sortable, filterable, exportable to CSV
+- **Gantt view** — shown once any fetched issue has a due date; bars run from each issue's created date to its due date, critical-path issues get a gold dashed outline, exportable to CSV
 - **Critical path calculation** — longest chain of blocking dependencies
 - **Stats** — total issues, dependencies, critical path length, blocked issue count
 

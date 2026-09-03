@@ -483,7 +483,6 @@ image built in [Building & Publishing to Docker Hub](#building--publishing-to-do
 
 ## Next Steps
 
-- Add **Gantt view** (if due dates exist)
 - Add **Team burndown** metrics
 - Add **Webhook integration** for real-time updates
 - Export to **Smartsheet/Monday.com** for portfolio view
