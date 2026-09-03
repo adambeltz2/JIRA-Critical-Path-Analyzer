@@ -68,7 +68,22 @@ this image gets built and pushed in the first place.
    cd JIRA-Critical-Path-Analyzer
    ```
 
-2. **Build and run:**
+2. **Create the logs directory and make it writable by the container:**
+   ```bash
+   mkdir -p logs
+   chmod 777 logs
+   ```
+
+   The container runs as the non-root `node` user (uid 1000, per `Dockerfile`), but
+   `docker-compose.yml` bind-mounts your host's `./logs` over `/app/logs` — and a fresh
+   `git clone` leaves that directory `755`, owned by whatever user cloned the repo. If that
+   uid isn't 1000, every `/api/save-export` call and the per-page debug log writes in
+   `/api/jira-search` fail with `EACCES`. The container itself stays up and `/health` still
+   passes, so this failure only shows up as a 500 response from those two endpoints. Running
+   the `chmod` above (or `chown -R 1000:1000 logs` if you'd rather not open it up to all
+   users) avoids that. Skip this step for Option 1, where there's no host clone.
+
+3. **Build and run:**
    ```bash
    docker compose up -d --remove-orphans
    ```
@@ -76,12 +91,12 @@ this image gets built and pushed in the first place.
    This builds the image from the repo's `Dockerfile` and starts the single `jira-analyzer`
    service on port 3000, with `./logs` bind-mounted to `/app/logs` in the container.
 
-3. **Verify the container is running:**
+4. **Verify the container is running:**
    ```bash
    docker compose ps
    ```
 
-4. **Access the app:**
+5. **Access the app:**
    - Open browser: `http://localhost:3000`
    - The **Proxy URL** field is pre-filled with the page's own origin (`http://localhost:3000`)
      — leave it as-is.
@@ -92,7 +107,7 @@ this image gets built and pushed in the first place.
      - **JQL:** `project = TMD` or leave default
    - Click **"Fetch & Analyze"**
 
-5. **Stop the container:**
+6. **Stop the container:**
    ```bash
    docker compose down
    ```
@@ -291,6 +306,20 @@ order by updated DESC
 1. Check logs: `docker logs jira-analyzer` (or `docker compose logs -f`)
 2. Ensure port 3000 is available: `lsof -i :3000`
 3. Rebuild: `docker compose build --no-cache`
+
+### "Fetch & Analyze" works, but export/save fails with a 500 and an EACCES error
+**Cause:** The container runs as the non-root `node` user (uid 1000), but `docker-compose.yml`
+bind-mounts your host's `./logs` over `/app/logs`. A `git clone` typically leaves `logs/`
+`755` and owned by whatever user cloned the repo — if that isn't uid 1000, the container
+can't write to it. `/health` and the rest of the app keep working, so this only shows up on
+`/api/save-export` and the per-page debug log writes in `/api/jira-search`.
+**Fix:**
+```bash
+chmod 777 logs
+# or, to avoid opening it up to all users:
+chown -R 1000:1000 logs
+docker compose restart
+```
 
 ### Graph rendering is slow (1000+ issues)
 **Fix:**
