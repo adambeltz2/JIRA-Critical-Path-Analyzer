@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.1.0] - 2026-09-03
+
+### Changed
+- Replaced the two-container Docker setup (`jira-proxy` + `jira-frontend`/nginx) with a
+  single image: `Dockerfile` builds one `node:18-alpine` container running
+  `jira-proxy-server.js`, which now also serves `jira-critical-path.html` at `GET /` via
+  `res.sendFile` (not `express.static`, so no other file is exposed). `docker-compose.yml`
+  now runs one `jira-analyzer` service on port 3000. Removed `Dockerfile.jira-proxy` and
+  `nginx.conf`.
+- `jira-critical-path.html`'s Proxy URL field now defaults to `window.location.origin`
+  instead of a hardcoded port, since the client and proxy are always same-origin in this
+  deployment.
+- Replaced the exponential per-node DFS in `calculateCriticalPath` with a linear
+  topological-sort + DP pass.
+- `/api/jira-search` now streams progress as newline-delimited JSON (one line per
+  internally-fetched JIRA page, then a final line with the merged result) instead of
+  returning a single response after the entire multi-page fetch completes silently.
+- Rewrote `SETUP.md` and `README.md` for the single-image architecture, and added a
+  step-by-step "Building & Publishing to Docker Hub" section to `SETUP.md`.
+
 ## [1.0.0] - 2026-09-02
 
 ### Added

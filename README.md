@@ -11,31 +11,37 @@ A production-ready tool to extract JIRA dependencies, visualize relationships, a
 | File | Purpose |
 |---|---|
 | [jira-critical-path.html](jira-critical-path.html) | Single-file client: dependency graph, table view, critical path calculation |
-| [jira-proxy-server.js](jira-proxy-server.js) | Node/Express proxy to JIRA Cloud REST API v3 (works around browser CORS) |
-| [Dockerfile.jira-proxy](Dockerfile.jira-proxy) | Image build for the proxy server |
-| [docker-compose.yml](docker-compose.yml) | Runs `jira-proxy` (host port 3002 → container 3000) + `jira-frontend` (host port 8085 → container 80) |
-| [nginx.conf](nginx.conf) | Static file serving config for the frontend container |
-| [package.json](package.json) | Proxy server dependencies (`express`, `cors`, `axios`) |
+| [jira-proxy-server.js](jira-proxy-server.js) | Node/Express server — proxies JIRA Cloud REST API v3 (works around browser CORS) **and** serves `jira-critical-path.html` at `GET /` |
+| [Dockerfile](Dockerfile) | Single-image build: one container runs both the client and the proxy API |
+| [docker-compose.yml](docker-compose.yml) | Runs that one `jira-analyzer` service (host port 3000 → container 3000) |
+| [package.json](package.json) | Server dependencies (`express`, `cors`, `axios`) |
 
 ## Quick start
 
-### Clone the repo
+### Option A: Docker Hub
+
+```bash
+docker run -d --name jira-analyzer -p 3000:3000 -v "$(pwd)/logs:/app/logs" \
+  <your-dockerhub-username>/jira-critical-path-analyzer:latest
+```
+
+No clone needed. See [SETUP.md](SETUP.md#building--publishing-to-docker-hub) for how to
+build and publish this image yourself.
+
+### Option B: Clone and build with Docker Compose
 
 ```bash
 git clone https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer.git
 cd JIRA-Critical-Path-Analyzer
-```
-
-Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose (bundled with Docker Desktop) to run the steps below. See [SETUP.md](SETUP.md) if you'd rather run the proxy standalone with local Node instead of Docker.
-
-### Run it
-
-```bash
 docker compose up -d --remove-orphans
 ```
 
-Then open `http://localhost:8085` and fill in:
-- **Proxy URL:** `http://localhost:3002` (pre-filled as the form default)
+Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose (bundled with Docker Desktop). See [SETUP.md](SETUP.md) if you'd rather run it standalone with local Node instead of Docker.
+
+### Then
+
+Open `http://localhost:3000` and fill in:
+- **Proxy URL:** pre-filled with the page's own origin — leave as-is
 - **Tenant URL:** your Atlassian domain, e.g. `https://yourcompany.atlassian.net`
 - **Email / API Token:** from [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
 - **JQL:** leave blank (default) to pull every issue across all projects you have access to, or scope it, e.g. `project = TMD`
@@ -57,16 +63,17 @@ Full setup options (Docker Compose, standalone proxy, local Node), JQL examples,
 ## Architecture
 
 ```
-Browser (jira-critical-path.html)
+Browser (jira-critical-path.html, served from GET /)
         │  POST /api/jira-search
         ▼
-Node.js Proxy Server (port 3000)
+Node.js Server (port 3000) — serves the client AND proxies the API
         │  Basic Auth via HTTPS
         ▼
 JIRA Cloud API (REST v3)
 ```
 
-The proxy exists solely to work around CORS — it does not persist or transform JIRA data.
+One process, one container, one port. The proxy exists solely to work around CORS — it
+does not persist or transform JIRA data.
 
 ## Features
 

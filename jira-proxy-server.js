@@ -19,6 +19,18 @@ app.use(cors());
 // issues) comfortably exceeds that.
 app.use(express.json({ limit: '100mb' }));
 
+// Serve the single-file client at the root. Deliberately not express.static(__dirname) —
+// that would also expose package.json, this server's own source, and anything else dropped
+// in this directory. res.sendFile only ever serves this one named file.
+app.get('/', (req, res) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'X-XSS-Protection': '1; mode=block'
+  });
+  res.sendFile(path.join(__dirname, 'jira-critical-path.html'));
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -163,6 +175,7 @@ app.post('/api/jira-search', async (req, res) => {
     let nextPageToken = null;
     let pageNum = 1;
     let fieldNames = null;
+    let streamStarted = false;
 
     // Cancel the in-flight JIRA request(s) if the client disconnects (e.g. a UI "stop" button
     // calling AbortController.abort() on its fetch) instead of continuing to hammer JIRA in the
@@ -179,6 +192,21 @@ app.post('/api/jira-search', async (req, res) => {
         upstreamAbort.abort();
       }
     });
+
+    // Once the first page succeeds, switch to a newline-delimited-JSON stream (one JSON
+    // object per line) so the client can show real page-by-page progress instead of waiting
+    // silently on one large response. JIRA's nextPageToken pagination is inherently
+    // sequential — each page's token only exists in the previous page's response — so this
+    // doesn't speed up the fetch itself, only makes its progress visible.
+    const startStream = () => {
+      if (!streamStarted) {
+        streamStarted = true;
+        res.status(200);
+        res.set('Content-Type', 'application/x-ndjson');
+        res.set('Cache-Control', 'no-cache');
+      }
+    };
+    const writeLine = (obj) => res.write(JSON.stringify(obj) + '\n');
 
     // Paginate through results using nextPageToken
     while (true) {
@@ -240,6 +268,9 @@ app.post('/api/jira-search', async (req, res) => {
       console.log(`[SEARCH] Page ${pageNum}: Got ${pageIssues.length} issues (total: ${allIssues.length})`);
       console.log(`[SEARCH] isLast: ${response.data.isLast}, nextPageToken exists: ${!!response.data.nextPageToken}`);
 
+      startStream();
+      writeLine({ type: 'progress', page: pageNum, issuesThisPage: pageIssues.length, issuesSoFar: allIssues.length });
+
       // Check if there are more pages
       if (response.data.isLast === true || !response.data.nextPageToken) {
         console.log(`[SEARCH] ✓ Pagination complete: ${allIssues.length} total issues`);
@@ -257,14 +288,16 @@ app.post('/api/jira-search', async (req, res) => {
       }
     }
 
-    // Return all issues
-    res.json({
+    // Final line of the stream carries the complete result set.
+    writeLine({
+      type: 'done',
       issues: allIssues,
       total: allIssues.length,
       startAt: 0,
       maxResults: allIssues.length,
       names: fieldNames || {}
     });
+    res.end();
 
   } catch (error) {
     console.error('[SEARCH] Error:', error.message);
@@ -273,6 +306,21 @@ app.post('/api/jira-search', async (req, res) => {
     if (res.writableEnded || axios.isCancel(error) || error.code === 'ERR_CANCELED') {
       console.log('[SEARCH] Request cancelled — no response sent');
       return;
+    }
+
+    if (res.headersSent) {
+      // Already streaming NDJSON to the client (at least one page succeeded) — can't switch
+      // back to a plain error status/body at this point, so signal the failure as one more
+      // line in the stream instead.
+      const errPayload = error.response
+        ? { type: 'error', error: `JIRA API error: ${error.response.status}`, details: error.response.data }
+        : { type: 'error', error: error.message };
+      try {
+        res.write(JSON.stringify(errPayload) + '\n');
+      } catch (writeErr) {
+        console.error('[SEARCH] Failed to write error line to stream:', writeErr.message);
+      }
+      return res.end();
     }
 
     if (error.response) {
