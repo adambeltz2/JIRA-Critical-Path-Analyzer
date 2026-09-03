@@ -203,10 +203,15 @@ for anyone.
 Anyone can now run it with the `docker run` command from Option 1, substituting your
 Docker Hub username.
 
-> This is a manual publish flow. If you'd rather have this happen automatically on every
-> push or release, that needs a GitHub Actions workflow with `DOCKERHUB_USERNAME` /
-> `DOCKERHUB_TOKEN` repo secrets — tracked as a deferred item in `backlog.md` since it
-> wasn't set up here (adding CI credentials is its own explicit decision).
+> The steps above are for a manual, one-off publish. This repo also has an automated path:
+> [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) builds and
+> pushes `<your-dockerhub-username>/jira-critical-path-analyzer:latest` and
+> `:<version>` whenever a `v*` tag is pushed (e.g. `git tag v1.9.0 && git push origin v1.9.0`).
+> It requires two repo secrets under **Settings → Secrets and variables → Actions**:
+> `DOCKERHUB_USERNAME` (your Docker Hub username) and `DOCKERHUB_TOKEN` (a Docker Hub
+> [access token](https://hub.docker.com/settings/security), not your account password —
+> scope it to Read & Write on this repo only). Until those secrets are set, the workflow
+> run will fail at the login step; the manual steps above remain the fallback.
 
 ## Getting Your JIRA API Token
 

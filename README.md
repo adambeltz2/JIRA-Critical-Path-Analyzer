@@ -25,8 +25,10 @@ docker run -d --name jira-analyzer -p 3000:3000 -v "$(pwd)/logs:/app/logs" \
   <your-dockerhub-username>/jira-critical-path-analyzer:latest
 ```
 
-No clone needed. See [SETUP.md](SETUP.md#building--publishing-to-docker-hub) for how to
-build and publish this image yourself.
+No clone needed. Images are published automatically on version tags via
+[.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) — see
+[SETUP.md](SETUP.md#building--publishing-to-docker-hub) for the required repo secrets and
+the manual publish steps if you'd rather push by hand.
 
 ### Option B: Clone and build with Docker Compose
 
