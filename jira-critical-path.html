@@ -1199,6 +1199,12 @@
                 }
             }, []);
 
+            // Longest chain of "blocks" links, by node count, ending at the issue furthest
+            // downstream. Computed via Kahn's-algorithm topological sort + a single DP
+            // relaxation pass (O(V+E)) instead of a per-node DFS, which on a diamond-shaped
+            // dependency graph (multiple tickets sharing a common blocker — common in real
+            // JIRA data) re-explores the same sub-paths combinatorially and can blow up on
+            // large tenants.
             const calculateCriticalPath = (issuesArray, deps, addLog) => {
                 // Build adjacency list for blockers
                 const blockerMap = new Map();
@@ -1223,40 +1229,105 @@
                     }
                 });
 
-                // Find longest path using DFS
-                let longestPath = [];
-                const visited = new Set();
+                // dp[node] = length of the longest blocker chain ending at node.
+                // predecessor[node] = the blocker that achieved that length, for path reconstruction.
+                const dp = new Map();
+                const predecessor = new Map();
+                const remainingIndegree = new Map();
+                const queue = [];
 
-                const dfs = (node, path) => {
-                    visited.add(node);
-                    path.push(node);
-
-                    const blockers = blockerMap.get(node)?.blockedBy || [];
-                    if (blockers.length === 0) {
-                        // Leaf node
-                        if (path.length > longestPath.length) {
-                            longestPath = [...path];
-                        }
-                    } else {
-                        blockers.forEach(blocker => {
-                            if (!visited.has(blocker)) {
-                                dfs(blocker, path);
-                            }
-                        });
-                    }
-
-                    path.pop();
-                    visited.delete(node);
-                };
-
-                const rootProgressStep = Math.max(500, Math.ceil(issuesArray.length / 4));
-                issuesArray.forEach((issue, idx) => {
-                    dfs(issue.key, []);
-                    const processed = idx + 1;
-                    if (addLog && processed % rootProgressStep === 0 && processed !== issuesArray.length) {
-                        addLog(`Traversed ${processed} of ${issuesArray.length} issues (longest chain so far: ${longestPath.length})...`, 'info');
+                blockerMap.forEach((entry, key) => {
+                    dp.set(key, 1);
+                    predecessor.set(key, null);
+                    remainingIndegree.set(key, entry.blockedBy.length);
+                    if (entry.blockedBy.length === 0) {
+                        queue.push(key);
                     }
                 });
+
+                let processed = 0;
+                const total = blockerMap.size;
+                const progressStep = Math.max(500, Math.ceil(total / 4));
+
+                while (queue.length > 0) {
+                    const node = queue.shift();
+                    processed++;
+                    if (addLog && processed % progressStep === 0 && processed !== total) {
+                        addLog(`Traversed ${processed} of ${total} issues (longest chain so far: ${dp.get(node)})...`, 'info');
+                    }
+
+                    const nodeDp = dp.get(node);
+                    const blocks = blockerMap.get(node)?.blocks || [];
+                    blocks.forEach(blocked => {
+                        if (nodeDp + 1 > dp.get(blocked)) {
+                            dp.set(blocked, nodeDp + 1);
+                            predecessor.set(blocked, node);
+                        }
+                        const remaining = remainingIndegree.get(blocked) - 1;
+                        remainingIndegree.set(blocked, remaining);
+                        if (remaining === 0) {
+                            queue.push(blocked);
+                        }
+                    });
+                }
+
+                // Any node left with unresolved indegree is part of a cycle (e.g. a data
+                // error where two issues block each other). Real JIRA blocking cycles are
+                // rare and small, so fall back to the original bounded DFS just for those
+                // nodes instead of trying to fold them into the linear DP pass.
+                const cyclicNodes = [...remainingIndegree.entries()]
+                    .filter(([, indegree]) => indegree > 0)
+                    .map(([key]) => key);
+
+                let longestPath = [];
+                if (cyclicNodes.length > 0) {
+                    if (addLog) {
+                        addLog(`Detected a cycle in blocking links among ${cyclicNodes.length} issue(s) — falling back to bounded search for those`, 'warn');
+                    }
+                    const visited = new Set();
+                    const dfs = (node, path) => {
+                        visited.add(node);
+                        path.push(node);
+
+                        const blockers = blockerMap.get(node)?.blockedBy || [];
+                        if (blockers.length === 0) {
+                            if (path.length > longestPath.length) {
+                                longestPath = [...path];
+                            }
+                        } else {
+                            blockers.forEach(blocker => {
+                                if (!visited.has(blocker)) {
+                                    dfs(blocker, path);
+                                }
+                            });
+                        }
+
+                        path.pop();
+                        visited.delete(node);
+                    };
+                    cyclicNodes.forEach(node => dfs(node, []));
+                }
+
+                // Reconstruct the best acyclic chain found by the DP pass, and keep it only
+                // if it beats whatever the cycle fallback (if any) found.
+                let bestNode = null;
+                let bestLength = 0;
+                dp.forEach((length, key) => {
+                    if (remainingIndegree.get(key) === 0 && length > bestLength) {
+                        bestLength = length;
+                        bestNode = key;
+                    }
+                });
+
+                if (bestNode && bestLength > longestPath.length) {
+                    const path = [];
+                    let cursor = bestNode;
+                    while (cursor !== null) {
+                        path.push(cursor);
+                        cursor = predecessor.get(cursor);
+                    }
+                    longestPath = path;
+                }
 
                 return longestPath;
             };
