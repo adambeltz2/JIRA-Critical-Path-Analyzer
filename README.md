@@ -19,6 +19,17 @@ A production-ready tool to extract JIRA dependencies, visualize relationships, a
 
 ## Quick start
 
+### Clone the repo
+
+```bash
+git clone https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer.git
+cd JIRA-Critical-Path-Analyzer
+```
+
+Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose (bundled with Docker Desktop) to run the steps below. See [SETUP.md](SETUP.md) if you'd rather run the proxy standalone with local Node instead of Docker.
+
+### Run it
+
 ```bash
 docker compose up -d --remove-orphans
 ```
