@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.2.0] - 2026-09-03
+
+### Added
+- Gantt tab in `jira-critical-path.html`, shown once any fetched issue has a due date. Each
+  bar's start is approximated from the issue's `created` date (Jira has no native start-date
+  field) and its end from `duedate`; critical-path issues get a gold dashed outline and a
+  "today" reference line marks the current date. A new "Export CSV" button in the tab writes
+  one row per issue with its computed start/end/duration via a new `buildGanttCSV`, alongside
+  the existing table export.
+
 ## [1.1.1] - 2026-09-03
 
 ### Fixed

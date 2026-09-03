@@ -6,7 +6,6 @@ Format: `[TAG] Description — affected files`
 
 ## Open Items
 
-- [FEATURE] Add Gantt view if due dates exist on issues; must be exportable to CSV (one row per issue with its computed start/end/duration, consistent with how the existing table view is exportable via `buildCSV`) — `jira-critical-path.html`
 - [FEATURE] Add team burndown metrics — `jira-critical-path.html`
 - [FEATURE] Add webhook integration for real-time updates — `jira-proxy-server.js`
 - [FEATURE] Export to Smartsheet/Monday.com for portfolio view — `jira-critical-path.html`
