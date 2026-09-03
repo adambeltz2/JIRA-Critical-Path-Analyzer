@@ -1,0 +1,2486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JIRA Critical Path Analyzer</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(135deg, #0052CC 0%, #003399 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .form-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+            font-size: 14px;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #0052CC;
+            box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+        }
+        @media (max-width: 900px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+        button {
+            background: #0052CC;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #003399;
+        }
+        button:disabled {
+            background: #999;
+            cursor: not-allowed;
+        }
+        .btn-danger {
+            background: #C62828;
+        }
+        .btn-danger:hover {
+            background: #8E0000;
+        }
+        .status-message {
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        .status-message.loading {
+            background: #E3F2FD;
+            color: #0052CC;
+        }
+        .status-message.error {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+        .status-message.success {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+        .status-message.warn {
+            background: #FFF8E1;
+            color: #8D6E00;
+        }
+        .proxy-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .proxy-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .proxy-status.checking {
+            background: #ECEFF1;
+            color: #546E7A;
+        }
+        .proxy-status.checking .proxy-status-dot {
+            background: #90A4AE;
+            animation: pulse 1s infinite ease-in-out;
+        }
+        .proxy-status.online {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+        .proxy-status.online .proxy-status-dot {
+            background: #2E7D32;
+        }
+        .proxy-status.offline {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+        .proxy-status.offline .proxy-status-dot {
+            background: #C62828;
+            animation: pulse 1s infinite ease-in-out;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
+        }
+        .log-panel {
+            background: #0d1117;
+            color: #c9d1d9;
+            font-family: 'SF Mono', Monaco, Consolas, 'Courier New', monospace;
+            font-size: 12px;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-bottom: 15px;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .log-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            position: sticky;
+            top: 0;
+            background: #0d1117;
+        }
+        .log-panel-title {
+            font-weight: 600;
+            color: #8b949e;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .log-panel-title .live-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #3fb950;
+            animation: pulse 1s infinite ease-in-out;
+        }
+        .log-clear-btn {
+            background: none;
+            border: none;
+            color: #8b949e;
+            cursor: pointer;
+            font-size: 11px;
+            padding: 2px 6px;
+        }
+        .log-clear-btn:hover {
+            color: #c9d1d9;
+        }
+        .log-line {
+            display: flex;
+            gap: 8px;
+            padding: 1px 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.5;
+        }
+        .log-time {
+            color: #6e7681;
+            flex-shrink: 0;
+        }
+        .log-line.info .log-message { color: #79c0ff; }
+        .log-line.success .log-message { color: #3fb950; }
+        .log-line.error .log-message { color: #f85149; }
+        .log-line.warn .log-message { color: #d29922; }
+        .scope-picker {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 15px;
+            background: #fafafa;
+        }
+        .scope-picker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .scope-picker-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .scope-picker-column-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 6px;
+        }
+        .scope-picker-column-title button {
+            background: none;
+            border: none;
+            color: #0052CC;
+            padding: 0;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .scope-picker-column-title button:hover {
+            background: none;
+            text-decoration: underline;
+        }
+        .scope-picker-list {
+            max-height: 160px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background: white;
+            padding: 6px 8px;
+        }
+        .scope-picker-list label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            padding: 3px 0;
+            cursor: pointer;
+        }
+        .scope-picker-list input[type="checkbox"] {
+            margin: 0;
+        }
+        .app-footer {
+            position: relative;
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 1px solid #e0e0e0;
+            font-size: 12px;
+            color: #888;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .app-footer-toggle {
+            background: none;
+            border: none;
+            color: #0052CC;
+            padding: 0;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .app-footer-toggle:hover {
+            background: none;
+            text-decoration: underline;
+        }
+        .app-footer-changelog {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            margin-bottom: 8px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            padding: 14px 16px;
+            max-width: 480px;
+            max-height: 320px;
+            overflow-y: auto;
+            font-size: 13px;
+            color: #333;
+        }
+        .app-footer-changelog-entry {
+            margin-bottom: 12px;
+        }
+        .app-footer-changelog-entry:last-child {
+            margin-bottom: 0;
+        }
+        .app-footer-changelog-version {
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .app-footer-changelog-entry ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+        .app-footer-changelog-entry li {
+            margin-bottom: 2px;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+        .tab-button {
+            background: none;
+            color: #666;
+            padding: 10px 20px;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .tab-button.active {
+            color: #0052CC;
+            border-bottom-color: #0052CC;
+        }
+        .tab-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        .graph-wrapper {
+            position: relative;
+        }
+        .graph-container {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fafafa;
+        }
+        .graph-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .lineage-focus-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #EDE7F6;
+            color: #4527A0;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .lineage-focus-badge button {
+            background: none;
+            border: none;
+            color: #4527A0;
+            padding: 0 0 0 4px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .lineage-hint {
+            font-size: 12px;
+            color: #666;
+        }
+        .key-filter-input {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            min-width: 220px;
+        }
+        .zoom-controls {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 10;
+        }
+        .zoom-btn {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            background: white;
+            color: #333;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .zoom-btn:hover {
+            background: #f0f0f0;
+        }
+        .zoom-btn.reset {
+            font-size: 13px;
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            background: #f5f5f5;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
+            cursor: pointer;
+            user-select: none;
+        }
+        th:hover {
+            background: #efefef;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:hover {
+            background: #f9f9f9;
+        }
+        .issue-key {
+            font-weight: 600;
+            color: #0052CC;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-todo {
+            background: #E3F2FD;
+            color: #1565C0;
+        }
+        .status-inprogress {
+            background: #FFF3E0;
+            color: #F57C00;
+        }
+        .status-review {
+            background: #F3E5F5;
+            color: #7B1FA2;
+        }
+        .status-done {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+        .type-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .priority-high {
+            color: #C62828;
+            font-weight: 600;
+        }
+        .priority-medium {
+            color: #F57C00;
+            font-weight: 600;
+        }
+        .priority-low {
+            color: #388E3C;
+        }
+        .blocker-count {
+            background: #FFEBEE;
+            color: #C62828;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        .blocker-count.zero {
+            background: transparent;
+            color: #999;
+        }
+        .related-badge {
+            background: #E3F2FD;
+            color: #0052CC;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+        .related-badge.zero {
+            background: transparent;
+            color: #999;
+            cursor: default;
+        }
+        .critical-path-highlight {
+            background: #FFF9C4;
+        }
+        .cross-project-highlight {
+            background: #E0F2F1;
+        }
+        .critical-path-highlight.cross-project-highlight {
+            background: linear-gradient(135deg, #FFF9C4 50%, #E0F2F1 50%);
+        }
+        .controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .filter-input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            flex: 1;
+            min-width: 200px;
+        }
+        .legend {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-box {
+            width: 16px;
+            height: 16px;
+            border-radius: 2px;
+        }
+        .legend-group-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            margin: 4px 0 6px;
+        }
+        .legend-group {
+            margin-bottom: 5px;
+        }
+        .detail-panel {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: 400px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+            overflow-y: auto;
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+            }
+            to {
+                transform: translateX(0);
+            }
+        }
+        .detail-header {
+            padding: 20px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .detail-close {
+            background: none;
+            color: #666;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            border: none;
+        }
+        .detail-content {
+            padding: 20px;
+        }
+        .detail-field {
+            margin-bottom: 15px;
+        }
+        .detail-label {
+            font-weight: 600;
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .detail-value {
+            font-size: 14px;
+            word-break: break-word;
+        }
+        .blocker-list {
+            list-style: none;
+        }
+        .blocker-list li {
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 3px;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+        .blocker-list a {
+            color: #0052CC;
+            text-decoration: none;
+        }
+        .blocker-list a:hover {
+            text-decoration: underline;
+        }
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #ddd;
+            border-top-color: #0052CC;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #0052CC;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #0052CC;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        // Solid, high-contrast colors — used for graph node fill/stroke and legend swatches.
+        const TYPE_COLORS = {
+            epic: '#6554C0',
+            story: '#36B37E',
+            task: '#2684FF',
+            subtask: '#4BADE8',
+            bug: '#E5493A',
+            improvement: '#00A3BF',
+            test: '#8777D9',
+            initiative: '#FF8B00'
+        };
+        const TYPE_COLOR_DEFAULT = '#6B778C';
+
+        const STATUS_COLORS = {
+            'status-todo': '#1565C0',
+            'status-inprogress': '#F57C00',
+            'status-review': '#7B1FA2',
+            'status-done': '#2E7D32'
+        };
+        const STATUS_LEGEND = [
+            { label: 'To Do', cls: 'status-todo' },
+            { label: 'In Progress', cls: 'status-inprogress' },
+            { label: 'In Review', cls: 'status-review' },
+            { label: 'Done', cls: 'status-done' }
+        ];
+
+        const getTypeColor = (type) => {
+            const key = (type || '').toLowerCase().replace(/[\s-]/g, '');
+            return TYPE_COLORS[key] || TYPE_COLOR_DEFAULT;
+        };
+
+        // Bump on every meaningful change and add an entry below — this is the only place that
+        // tracks version history for this single-file app (no build step, not a git repo).
+        const APP_VERSION = '1.7.0';
+        const CHANGELOG = [
+            { version: '1.7.0', date: '2026-09-02', notes: [
+                'Add pre-fetch scope picker: load projects/issue types and narrow the run before fetching',
+                'Add "Cross-Project" tab, filter, and graph/table highlighting for cross-project links',
+                'Fix O(n·m) Array.some() scans in graph rendering that dominated render time at scale'
+            ]},
+            { version: '1.6.0', date: '2026-09-02', notes: [
+                'Auto-export CSV to the proxy logs/ folder when a run completes',
+                'Add a Stop button that cancels the in-flight fetch client- and server-side',
+                'Add heartbeat log lines so a long-running fetch doesn\'t look stalled'
+            ]},
+            { version: '1.5.0', date: '2026-09-01', notes: [
+                'Fix duplicate-refetch pagination bug (client no longer loops against an endpoint that already returns the full result set)',
+                'Add Sprint and Due Date to the issue detail panel',
+                'Add streaming progress detail to the Activity Log'
+            ]}
+        ];
+
+        function JiraCriticalPathAnalyzer() {
+            const [formData, setFormData] = useState({
+                proxyUrl: 'http://localhost:3002',
+                tenantUrl: '',
+                email: '',
+                token: '',
+                jql: 'project is not EMPTY ORDER BY updated ASC'
+            });
+
+            const [issues, setIssues] = useState([]);
+            const [dependencies, setDependencies] = useState([]);
+            const [criticalPath, setCriticalPath] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [activeTab, setActiveTab] = useState('graph');
+            const [selectedIssue, setSelectedIssue] = useState(null);
+            const [filterText, setFilterText] = useState('');
+            const [sortColumn, setSortColumn] = useState('key');
+            const [sortDesc, setSortDesc] = useState(false);
+            const [proxyStatus, setProxyStatus] = useState('checking'); // 'checking' | 'online' | 'offline'
+            const [proxyStatusMsg, setProxyStatusMsg] = useState('Checking...');
+            const [logs, setLogs] = useState([]);
+            const [zeroResults, setZeroResults] = useState(false);
+            const [lineageFocusKeys, setLineageFocusKeys] = useState([]);
+            const [keyFilterInput, setKeyFilterInput] = useState('');
+            const [showBlockedOnly, setShowBlockedOnly] = useState(false);
+            const [showCrossProjectOnly, setShowCrossProjectOnly] = useState(false);
+            const [runElapsedMs, setRunElapsedMs] = useState(0);
+            const [fieldNames, setFieldNames] = useState({});
+            const [availableProjects, setAvailableProjects] = useState([]);
+            const [availableIssueTypes, setAvailableIssueTypes] = useState([]);
+            const [selectedProjects, setSelectedProjects] = useState(new Set());
+            const [selectedIssueTypes, setSelectedIssueTypes] = useState(new Set());
+            const [metadataStatus, setMetadataStatus] = useState('idle'); // 'idle' | 'loading' | 'loaded' | 'error'
+            const [metadataError, setMetadataError] = useState('');
+            const [showChangelog, setShowChangelog] = useState(false);
+            const graphRef = useRef(null);
+            const logsEndRef = useRef(null);
+            const svgSelectionRef = useRef(null);
+            const zoomBehaviorRef = useRef(null);
+            const runStartRef = useRef(null);
+            const abortControllerRef = useRef(null);
+
+            const handleFormChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({ ...prev, [name]: value }));
+            };
+
+            const addLog = useCallback((message, level = 'info') => {
+                setLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), message, level }]);
+            }, []);
+
+            useEffect(() => {
+                if (logsEndRef.current) {
+                    logsEndRef.current.scrollIntoView({ block: 'nearest' });
+                }
+            }, [logs]);
+
+            useEffect(() => {
+                if (!loading) return;
+                runStartRef.current = Date.now();
+                setRunElapsedMs(0);
+                const intervalId = setInterval(() => {
+                    setRunElapsedMs(Date.now() - runStartRef.current);
+                }, 1000);
+                return () => clearInterval(intervalId);
+            }, [loading]);
+
+            const formatElapsed = (ms) => {
+                const totalSeconds = Math.floor(ms / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+            };
+
+            const checkProxyHealth = useCallback(async (proxyUrlRaw) => {
+                const proxyUrl = (proxyUrlRaw || '').replace(/\/$/, '');
+                if (!proxyUrl) {
+                    setProxyStatus('offline');
+                    setProxyStatusMsg('No proxy URL set');
+                    return;
+                }
+                setProxyStatus('checking');
+                setProxyStatusMsg('Checking...');
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+                    const response = await fetch(`${proxyUrl}/health`, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    if (response.ok) {
+                        setProxyStatus('online');
+                        setProxyStatusMsg('Proxy running');
+                    } else {
+                        setProxyStatus('offline');
+                        setProxyStatusMsg(`Proxy error (HTTP ${response.status})`);
+                    }
+                } catch (err) {
+                    setProxyStatus('offline');
+                    setProxyStatusMsg(err.name === 'AbortError' ? 'Proxy timed out' : 'Proxy unreachable');
+                }
+            }, []);
+
+            useEffect(() => {
+                const debounceId = setTimeout(() => {
+                    checkProxyHealth(formData.proxyUrl);
+                }, 500);
+                return () => clearTimeout(debounceId);
+            }, [formData.proxyUrl, checkProxyHealth]);
+
+            useEffect(() => {
+                const intervalId = setInterval(() => {
+                    checkProxyHealth(formData.proxyUrl);
+                }, 15000);
+                return () => clearInterval(intervalId);
+            }, [formData.proxyUrl, checkProxyHealth]);
+
+
+
+            // Lets the user scope the run to specific projects/issue types before kicking off the
+            // (potentially very large) main fetch, instead of only being able to narrow things down
+            // after already waiting on a full unscoped result.
+            const loadMetadata = useCallback(async () => {
+                if (!formData.token) {
+                    setMetadataStatus('error');
+                    setMetadataError('API token is required');
+                    return;
+                }
+
+                setMetadataStatus('loading');
+                setMetadataError('');
+
+                try {
+                    const proxyUrl = formData.proxyUrl.replace(/\/$/, '');
+                    const response = await fetch(`${proxyUrl}/api/jira-metadata`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            tenantUrl: formData.tenantUrl,
+                            email: formData.email,
+                            token: formData.token
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData.error || `API error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    setAvailableProjects(data.projects || []);
+                    setAvailableIssueTypes(data.issueTypes || []);
+                    // Default to "full" — everything selected, equivalent to no scope restriction.
+                    setSelectedProjects(new Set((data.projects || []).map(p => p.key)));
+                    setSelectedIssueTypes(new Set((data.issueTypes || []).map(t => t.name)));
+                    setMetadataStatus('loaded');
+                } catch (err) {
+                    setMetadataStatus('error');
+                    setMetadataError(err.message);
+                }
+            }, [formData.proxyUrl, formData.tenantUrl, formData.email, formData.token]);
+
+            const toggleProject = (key) => {
+                setSelectedProjects(prev => {
+                    const next = new Set(prev);
+                    if (next.has(key)) next.delete(key); else next.add(key);
+                    return next;
+                });
+            };
+
+            const toggleIssueType = (name) => {
+                setSelectedIssueTypes(prev => {
+                    const next = new Set(prev);
+                    if (next.has(name)) next.delete(name); else next.add(name);
+                    return next;
+                });
+            };
+
+            // Builds a JQL clause from the current project/issue-type selection and writes it into
+            // the JQL field — "full" selections (or nothing loaded) fall back to the original
+            // unrestricted default rather than spelling out every project/type explicitly.
+            const applyScopeToJQL = () => {
+                const clauses = [];
+
+                if (availableProjects.length > 0 && selectedProjects.size < availableProjects.length) {
+                    if (selectedProjects.size === 0) {
+                        addLog('No projects selected — pick at least one, or leave everything checked for no restriction.', 'warn');
+                        return;
+                    }
+                    const keys = [...selectedProjects].sort();
+                    clauses.push(`project in (${keys.join(',')})`);
+                } else {
+                    clauses.push('project is not EMPTY');
+                }
+
+                if (availableIssueTypes.length > 0 && selectedIssueTypes.size < availableIssueTypes.length) {
+                    if (selectedIssueTypes.size === 0) {
+                        addLog('No issue types selected — pick at least one, or leave everything checked for no restriction.', 'warn');
+                        return;
+                    }
+                    const names = [...selectedIssueTypes].sort();
+                    clauses.push(`issuetype in (${names.map(n => `"${n}"`).join(',')})`);
+                }
+
+                const jql = `${clauses.join(' AND ')} ORDER BY updated ASC`;
+                setFormData(prev => ({ ...prev, jql }));
+                addLog(`Scope applied — ${selectedProjects.size} project(s), ${selectedIssueTypes.size} issue type(s).`, 'info');
+            };
+
+            const fetchIssues = useCallback(async () => {
+                if (!formData.token) {
+                    setError('API token is required');
+                    return;
+                }
+
+                setLoading(true);
+                setError('');
+                setZeroResults(false);
+                setIssues([]);
+                setDependencies([]);
+                setCriticalPath([]);
+                setLogs([]);
+                setFieldNames({});
+
+                const controller = new AbortController();
+                abortControllerRef.current = controller;
+
+                try {
+                    const proxyUrl = formData.proxyUrl.replace(/\/$/, '');
+                    const maxResults = 5000;
+
+                    addLog(`Connecting to proxy at ${proxyUrl}...`, 'info');
+                    addLog(`Validating credentials for ${formData.email}...`, 'info');
+
+                    const validateResponse = await fetch(`${proxyUrl}/api/validate-credentials`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        signal: controller.signal,
+                        body: JSON.stringify({
+                            tenantUrl: formData.tenantUrl,
+                            email: formData.email,
+                            token: formData.token
+                        })
+                    });
+
+                    if (validateResponse.ok) {
+                        const validateData = await validateResponse.json();
+                        if (!validateData.valid) {
+                            const authMsg = validateData.error || 'Authentication failed';
+                            addLog(`Credential check failed: ${authMsg}`, 'error');
+                            throw new Error(`${authMsg} — your API token may be expired or incorrect. Generate a new one at id.atlassian.com/manage-profile/security/api-tokens`);
+                        }
+                        addLog(`Authenticated as ${validateData.user || formData.email}`, 'success');
+                    } else {
+                        addLog('Could not verify credentials (proxy error) — attempting search anyway...', 'warn');
+                    }
+
+                    addLog(`Querying ${formData.tenantUrl} as ${formData.email}`, 'info');
+                    addLog(`JQL: ${formData.jql || '(default — all accessible projects)'}`, 'info');
+
+                    // The proxy paginates internally against JIRA (via nextPageToken) and returns the
+                    // complete matching set in one response — it does not honor per-call startAt/maxResults
+                    // slicing, so this must be a single request. A client-side paging loop here would just
+                    // re-trigger a full server-side re-fetch each time and duplicate the results.
+                    addLog(`Fetching all matching issues (this can take a while for large result sets)...`, 'info');
+
+                    // The single request above can sit silent for many minutes on a large tenant (the proxy
+                    // doesn't stream progress back), which reads as "stuck" in the UI. Emit a heartbeat so
+                    // the log keeps visibly ticking for as long as the request is actually in flight.
+                    const fetchStartedAt = Date.now();
+                    const heartbeatId = setInterval(() => {
+                        addLog(`Still waiting on JIRA... (${formatElapsed(Date.now() - fetchStartedAt)} elapsed)`, 'info');
+                    }, 15000);
+
+                    let response;
+                    try {
+                        response = await fetch(`${proxyUrl}/api/jira-search`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            signal: controller.signal,
+                            body: JSON.stringify({
+                                tenantUrl: formData.tenantUrl,
+                                email: formData.email,
+                                token: formData.token,
+                                jql: formData.jql,
+                                maxResults: maxResults
+                            })
+                        });
+                    } finally {
+                        clearInterval(heartbeatId);
+                    }
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        const msg = errorData.error || `API error: ${response.status}`;
+                        addLog(`Proxy returned an error: ${msg}`, 'error');
+                        throw new Error(msg);
+                    }
+
+                    const data = await response.json();
+                    const allIssues = data.issues;
+                    if (data.names) {
+                        setFieldNames(data.names);
+                    }
+
+                    addLog(`Fetched ${allIssues.length} issues total`, allIssues.length === 0 ? 'warn' : 'success');
+
+                    if (allIssues.length === 0) {
+                        addLog('No issues matched this JQL — check the project key and syntax, then try again.', 'warn');
+                        setZeroResults(true);
+                        setIssues([]);
+                        setDependencies([]);
+                        setCriticalPath([]);
+                        abortControllerRef.current = null;
+                        setLoading(false);
+                        return;
+                    }
+
+                    // Extract dependencies
+                    addLog(`Extracting dependencies from ${allIssues.length} issue(s)...`, 'info');
+                    const deps = [];
+                    const issueMap = new Map(allIssues.map(i => [i.key, i]));
+                    const progressStep = Math.max(500, Math.ceil(allIssues.length / 4));
+
+                    allIssues.forEach((issue, idx) => {
+                        if (issue.fields.issuelinks && Array.isArray(issue.fields.issuelinks)) {
+                            issue.fields.issuelinks.forEach(link => {
+                                const target = link.outwardIssue || link.inwardIssue;
+                                if (target) {
+                                    const isOutward = !!link.outwardIssue;
+                                    deps.push({
+                                        from: issue.key,
+                                        to: target.key,
+                                        type: link.type.name,
+                                        direction: isOutward ? 'outward' : 'inward',
+                                        label: isOutward
+                                            ? (link.type.outward || link.type.name)
+                                            : (link.type.inward || link.type.name)
+                                    });
+                                }
+                            });
+                        }
+                        const processed = idx + 1;
+                        if (processed % progressStep === 0 && processed !== allIssues.length) {
+                            addLog(`Scanned ${processed} of ${allIssues.length} issues (${deps.length} link(s) so far)...`, 'info');
+                        }
+                    });
+                    addLog(`Found ${deps.length} dependency links`, 'success');
+
+                    setIssues(allIssues);
+                    setDependencies(deps);
+
+                    // Calculate critical path
+                    addLog(`Calculating critical path across ${issueMap.size} issue(s)...`, 'info');
+                    const path = calculateCriticalPath(allIssues, deps, addLog);
+                    setCriticalPath(path);
+                    addLog(`Critical path computed: ${path.length} issue(s) on path`, 'success');
+
+                    // Auto-export the full result set to the proxy's logs folder (./logs on the
+                    // host, via the docker-compose volume mount) so every completed run leaves a
+                    // CSV behind without the user having to remember to click Export.
+                    addLog('Exporting CSV to logs folder...', 'info');
+                    try {
+                        const csv = buildCSV(
+                            [...allIssues].sort((a, b) => a.key.localeCompare(b.key)),
+                            deps,
+                            path
+                        );
+                        const filename = `jira-analysis-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+                        const saveResponse = await fetch(`${proxyUrl}/api/save-export`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            signal: controller.signal,
+                            body: JSON.stringify({ filename, content: csv })
+                        });
+                        if (saveResponse.ok) {
+                            const saveData = await saveResponse.json();
+                            addLog(`CSV saved to logs folder: ${saveData.filename}`, 'success');
+                        } else {
+                            const saveErr = await saveResponse.json().catch(() => ({}));
+                            addLog(`Could not save CSV to logs folder: ${saveErr.error || saveResponse.status}`, 'warn');
+                        }
+                    } catch (saveErr) {
+                        if (saveErr.name === 'AbortError') throw saveErr;
+                        addLog(`Could not save CSV to logs folder: ${saveErr.message}`, 'warn');
+                    }
+
+                    addLog('Analysis complete.', 'success');
+                    setError('');
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        addLog('Cancelled by user.', 'warn');
+                        setError('');
+                    } else {
+                        addLog(`Failed: ${err.message}`, 'error');
+                        setError(`Error fetching issues: ${err.message}`);
+                        console.error(err);
+                    }
+                }
+
+                abortControllerRef.current = null;
+                setLoading(false);
+            }, [formData, addLog]);
+
+            const cancelFetch = useCallback(() => {
+                if (abortControllerRef.current) {
+                    abortControllerRef.current.abort();
+                }
+            }, []);
+
+            const calculateCriticalPath = (issuesArray, deps, addLog) => {
+                // Build adjacency list for blockers
+                const blockerMap = new Map();
+                issuesArray.forEach(i => {
+                    blockerMap.set(i.key, {
+                        issue: i,
+                        blockedBy: [],
+                        blocks: []
+                    });
+                });
+
+                deps.forEach(dep => {
+                    if (dep.type.toLowerCase().includes('block')) {
+                        if (!blockerMap.has(dep.from)) {
+                            blockerMap.set(dep.from, { blockedBy: [], blocks: [] });
+                        }
+                        if (!blockerMap.has(dep.to)) {
+                            blockerMap.set(dep.to, { blockedBy: [], blocks: [] });
+                        }
+                        blockerMap.get(dep.from).blocks.push(dep.to);
+                        blockerMap.get(dep.to).blockedBy.push(dep.from);
+                    }
+                });
+
+                // Find longest path using DFS
+                let longestPath = [];
+                const visited = new Set();
+
+                const dfs = (node, path) => {
+                    visited.add(node);
+                    path.push(node);
+
+                    const blockers = blockerMap.get(node)?.blockedBy || [];
+                    if (blockers.length === 0) {
+                        // Leaf node
+                        if (path.length > longestPath.length) {
+                            longestPath = [...path];
+                        }
+                    } else {
+                        blockers.forEach(blocker => {
+                            if (!visited.has(blocker)) {
+                                dfs(blocker, path);
+                            }
+                        });
+                    }
+
+                    path.pop();
+                    visited.delete(node);
+                };
+
+                const rootProgressStep = Math.max(500, Math.ceil(issuesArray.length / 4));
+                issuesArray.forEach((issue, idx) => {
+                    dfs(issue.key, []);
+                    const processed = idx + 1;
+                    if (addLog && processed % rootProgressStep === 0 && processed !== issuesArray.length) {
+                        addLog(`Traversed ${processed} of ${issuesArray.length} issues (longest chain so far: ${longestPath.length})...`, 'info');
+                    }
+                });
+
+                return longestPath;
+            };
+
+            const getIssueStatus = (issue) => {
+                return issue.fields.status?.name || 'Unknown';
+            };
+
+            const getIssueType = (issue) => {
+                return issue.fields.issuetype?.name || 'Task';
+            };
+
+            const getIssuePriority = (issue) => {
+                return issue.fields.priority?.name || 'Medium';
+            };
+
+            const getDueDate = (issue) => {
+                return issue.fields.duedate || null;
+            };
+
+            // JIRA issue keys are always PROJECT-123 — the project key is everything before the
+            // last hyphen-separated numeric segment.
+            const getProjectKey = (issueKey) => {
+                return issueKey.substring(0, issueKey.lastIndexOf('-'));
+            };
+
+            // The Sprint field lives on a per-instance custom field id (e.g. customfield_10020),
+            // so it's located by display name (from the /names field metadata) rather than a fixed key.
+            const getSprintFieldKeys = useCallback(() => {
+                return Object.keys(fieldNames).filter(k => fieldNames[k] === 'Sprint');
+            }, [fieldNames]);
+
+            // Sprint values come back either as structured objects (API v3) or, on older
+            // instances, as stringified Java objects like
+            // "com.atlassian...Sprint@1[id=42,name=Sprint 23,state=ACTIVE,endDate=2024-06-28T00:00:00.000Z,...]".
+            const parseSprintEntry = (entry) => {
+                if (entry && typeof entry === 'object') {
+                    return {
+                        id: entry.id,
+                        name: entry.name,
+                        state: (entry.state || '').toLowerCase(),
+                        startDate: entry.startDate || null,
+                        endDate: entry.endDate || null
+                    };
+                }
+                if (typeof entry === 'string') {
+                    const get = (key) => {
+                        const m = entry.match(new RegExp(`${key}=([^,\\]]*)`));
+                        return m ? m[1] : null;
+                    };
+                    return {
+                        id: get('id'),
+                        name: get('name'),
+                        state: (get('state') || '').toLowerCase(),
+                        startDate: get('startDate'),
+                        endDate: get('endDate')
+                    };
+                }
+                return null;
+            };
+
+            const getAllSprints = (issue) => {
+                const keys = getSprintFieldKeys().length
+                    ? getSprintFieldKeys()
+                    // Fall back to scanning custom fields directly if field-name metadata wasn't returned.
+                    : Object.keys(issue.fields || {}).filter(k => k.startsWith('customfield_'));
+
+                const sprints = [];
+                keys.forEach(key => {
+                    const value = issue.fields[key];
+                    if (Array.isArray(value)) {
+                        value.forEach(entry => {
+                            const parsed = parseSprintEntry(entry);
+                            if (parsed && parsed.name && parsed.state) {
+                                sprints.push(parsed);
+                            }
+                        });
+                    }
+                });
+                return sprints;
+            };
+
+            // Picks the most relevant sprint for an issue: the active one if there is one,
+            // otherwise the next future sprint, otherwise the most recently closed sprint.
+            const getCurrentSprint = (issue) => {
+                const sprints = getAllSprints(issue);
+                if (sprints.length === 0) return null;
+
+                const active = sprints.find(s => s.state === 'active');
+                if (active) return active;
+
+                const future = sprints
+                    .filter(s => s.state === 'future')
+                    .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+                if (future.length > 0) return future[0];
+
+                const closed = sprints
+                    .filter(s => s.state === 'closed')
+                    .sort((a, b) => (b.endDate || '').localeCompare(a.endDate || ''));
+                return closed[0] || sprints[sprints.length - 1];
+            };
+
+            // Related issues, split by relationship type
+            const getSubtaskKeys = (issue) => {
+                return Array.isArray(issue.fields.subtasks) ? issue.fields.subtasks.map(st => st.key) : [];
+            };
+
+            const getParentKey = (issue) => {
+                return issue.fields.parent?.key || null;
+            };
+
+            // Every distinct link phrase present in the data (e.g. "blocks", "is blocked by", "relates to", "clones"),
+            // mirroring how Jira itself groups issue links by type — one column per phrase.
+            const getAllLinkLabels = () => {
+                return [...new Set(dependencies.map(d => d.label))].sort();
+            };
+
+            const formatLinkLabel = (label) => {
+                return label.replace(/\b\w/g, c => c.toUpperCase());
+            };
+
+            const getLinkedKeysByLabel = (issue, label) => {
+                return dependencies.filter(d => d.from === issue.key && d.label === label).map(d => d.to);
+            };
+
+            const isOnCriticalPath = (issueKey) => {
+                return criticalPath.includes(issueKey);
+            };
+
+            // Dependencies whose two ends belong to different projects (by JIRA key prefix) —
+            // drives both the "Cross-Project Only" filter and the Cross-Project tab.
+            const crossProjectDependencies = dependencies.filter(d => getProjectKey(d.from) !== getProjectKey(d.to));
+
+            const crossProjectIssueKeys = new Set();
+            crossProjectDependencies.forEach(d => {
+                crossProjectIssueKeys.add(d.from);
+                crossProjectIssueKeys.add(d.to);
+            });
+
+            const isCrossProject = (issueKey) => crossProjectIssueKeys.has(issueKey);
+
+            const filteredIssues = issues.filter(issue => {
+                const searchText = filterText.toLowerCase();
+                return (
+                    issue.key.toLowerCase().includes(searchText) ||
+                    issue.fields.summary.toLowerCase().includes(searchText) ||
+                    (issue.fields.assignee?.displayName || '').toLowerCase().includes(searchText)
+                );
+            });
+
+            const sortedIssues = [...filteredIssues].sort((a, b) => {
+                let aVal, bVal;
+
+                switch (sortColumn) {
+                    case 'key':
+                        aVal = a.key;
+                        bVal = b.key;
+                        break;
+                    case 'summary':
+                        aVal = a.fields.summary;
+                        bVal = b.fields.summary;
+                        break;
+                    case 'status':
+                        aVal = getIssueStatus(a);
+                        bVal = getIssueStatus(b);
+                        break;
+                    case 'priority':
+                        aVal = getIssuePriority(a);
+                        bVal = getIssuePriority(b);
+                        break;
+                    case 'assignee':
+                        aVal = a.fields.assignee?.displayName || '';
+                        bVal = b.fields.assignee?.displayName || '';
+                        break;
+                    default:
+                        return 0;
+                }
+
+                if (aVal < bVal) return sortDesc ? 1 : -1;
+                if (aVal > bVal) return sortDesc ? -1 : 1;
+                return 0;
+            });
+
+            const handleSort = (column) => {
+                if (sortColumn === column) {
+                    setSortDesc(!sortDesc);
+                } else {
+                    setSortColumn(column);
+                    setSortDesc(false);
+                }
+            };
+
+            // Shared by the manual "Export CSV" button and the automatic post-fetch export —
+            // takes explicit issues/deps/path arrays rather than reading component state so it
+            // can be called with either the live (filtered/sorted) UI state or the raw fetch result.
+            const buildCSV = (issuesArray, depsArray, pathArray) => {
+                const linkLabels = [...new Set(depsArray.map(d => d.label))].sort();
+                const linkedKeysByLabel = (issue, label) =>
+                    depsArray.filter(d => d.from === issue.key && d.label === label).map(d => d.to);
+
+                const headers = [
+                    'Key', 'Summary', 'Type', 'Status', 'Priority', 'Assignee',
+                    'Subtasks', 'Parent',
+                    ...linkLabels.map(formatLinkLabel),
+                    'On Critical Path'
+                ];
+                const rows = issuesArray.map(issue => [
+                    issue.key,
+                    issue.fields.summary,
+                    issue.fields.issuetype.name,
+                    getIssueStatus(issue),
+                    getIssuePriority(issue),
+                    issue.fields.assignee?.displayName || 'Unassigned',
+                    getSubtaskKeys(issue).join(';'),
+                    getParentKey(issue) || '',
+                    ...linkLabels.map(label => linkedKeysByLabel(issue, label).join(';')),
+                    pathArray.includes(issue.key) ? 'Yes' : 'No'
+                ]);
+
+                return [headers, ...rows].map(row =>
+                    row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+                ).join('\n');
+            };
+
+            const exportCSV = () => {
+                const csv = buildCSV(sortedIssues, dependencies, criticalPath);
+
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `jira-analysis-${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            // Compute the full connected component (lineage) reachable from a given issue —
+            // includes issue links (blocks/relates/etc.) as well as parent/subtask hierarchy.
+            const getLineageKeys = useCallback((rootKey) => {
+                const adj = new Map();
+                const addEdge = (a, b) => {
+                    if (!adj.has(a)) adj.set(a, new Set());
+                    if (!adj.has(b)) adj.set(b, new Set());
+                    adj.get(a).add(b);
+                    adj.get(b).add(a);
+                };
+                dependencies.forEach(d => addEdge(d.from, d.to));
+                issues.forEach(issue => {
+                    const parentKey = getParentKey(issue);
+                    if (parentKey) addEdge(issue.key, parentKey);
+                    getSubtaskKeys(issue).forEach(subKey => addEdge(issue.key, subKey));
+                });
+                const visited = new Set([rootKey]);
+                const queue = [rootKey];
+                while (queue.length) {
+                    const current = queue.shift();
+                    const neighbors = adj.get(current);
+                    if (neighbors) {
+                        neighbors.forEach(n => {
+                            if (!visited.has(n)) {
+                                visited.add(n);
+                                queue.push(n);
+                            }
+                        });
+                    }
+                }
+                return visited;
+            }, [dependencies, issues]);
+
+            // Union of the connected lineage for every key in a list — lets you filter on
+            // several issues at once and still see how each one links out to the rest.
+            const getUnionLineageKeys = useCallback((rootKeys) => {
+                const union = new Set();
+                rootKeys.forEach(rootKey => {
+                    getLineageKeys(rootKey).forEach(k => union.add(k));
+                });
+                return union;
+            }, [getLineageKeys]);
+
+            const focusOnLineage = useCallback((issueKey) => {
+                setLineageFocusKeys([issueKey]);
+                setKeyFilterInput(issueKey);
+                setSelectedIssue(issueKey);
+            }, []);
+
+            const applyKeyFilterInput = useCallback(() => {
+                const keys = keyFilterInput
+                    .split(/[\s,]+/)
+                    .map(k => k.trim())
+                    .filter(Boolean);
+                setLineageFocusKeys(keys);
+                if (keys.length === 1) {
+                    setSelectedIssue(keys[0]);
+                }
+            }, [keyFilterInput]);
+
+            const clearLineageFocus = useCallback(() => {
+                setLineageFocusKeys([]);
+                setKeyFilterInput('');
+            }, []);
+
+            // Render dependency graph
+            useEffect(() => {
+                if (activeTab === 'graph' && graphRef.current && issues.length > 0) {
+                    renderGraph();
+                }
+            }, [activeTab, issues, criticalPath, lineageFocusKeys, showBlockedOnly, showCrossProjectOnly]);
+
+            const renderGraph = () => {
+                if (!graphRef.current) return;
+
+                graphRef.current.innerHTML = '';
+
+                const lineageSet = lineageFocusKeys.length > 0 ? getUnionLineageKeys(lineageFocusKeys) : null;
+                let visibleIssues = lineageSet ? issues.filter(i => lineageSet.has(i.key)) : issues;
+
+                if (showBlockedOnly) {
+                    const blockingKeys = new Set();
+                    dependencies.forEach(d => {
+                        if (d.type.toLowerCase().includes('block')) {
+                            blockingKeys.add(d.from);
+                            blockingKeys.add(d.to);
+                        }
+                    });
+                    visibleIssues = visibleIssues.filter(i => blockingKeys.has(i.key));
+                }
+
+                if (showCrossProjectOnly) {
+                    visibleIssues = visibleIssues.filter(i => crossProjectIssueKeys.has(i.key));
+                }
+
+                // Set-based lookups instead of Array.some() scans — with large issue/dependency
+                // counts, `.some()` against visibleIssues turns this into an O(n*m) scan that
+                // dominates render time long before D3 even starts drawing.
+                const visibleKeySet = new Set(visibleIssues.map(i => i.key));
+                const blockerCountMap = new Map();
+                dependencies.forEach(d => {
+                    if (d.type.toLowerCase().includes('block')) {
+                        blockerCountMap.set(d.to, (blockerCountMap.get(d.to) || 0) + 1);
+                    }
+                });
+
+                const nodes = visibleIssues.map(issue => ({
+                    id: issue.key,
+                    label: issue.key,
+                    summary: issue.fields.summary.substring(0, 50),
+                    type: getIssueType(issue),
+                    status: getIssueStatus(issue),
+                    blockerCount: blockerCountMap.get(issue.key) || 0,
+                    onCriticalPath: isOnCriticalPath(issue.key)
+                }));
+
+                const linkLinks = dependencies
+                    .filter(d => visibleKeySet.has(d.from) && visibleKeySet.has(d.to))
+                    .map(d => ({
+                        source: d.from,
+                        target: d.to,
+                        type: d.type,
+                        crossProject: getProjectKey(d.from) !== getProjectKey(d.to)
+                    }));
+
+                // Parent/subtask edges, drawn distinctly so hierarchy relationships are visible too
+                const hierarchyPairs = new Set();
+                visibleIssues.forEach(issue => {
+                    const parentKey = getParentKey(issue);
+                    if (parentKey && visibleKeySet.has(parentKey)) {
+                        hierarchyPairs.add(`${parentKey}|${issue.key}`);
+                    }
+                    getSubtaskKeys(issue).forEach(subKey => {
+                        if (visibleKeySet.has(subKey)) {
+                            hierarchyPairs.add(`${issue.key}|${subKey}`);
+                        }
+                    });
+                });
+                const hierarchyLinks = [...hierarchyPairs].map(pair => {
+                    const [source, target] = pair.split('|');
+                    return { source, target, type: 'hierarchy' };
+                });
+
+                const links = [...linkLinks, ...hierarchyLinks];
+
+                const width = graphRef.current.clientWidth;
+                const height = graphRef.current.clientHeight;
+
+                const svg = d3.select(graphRef.current)
+                    .append('svg')
+                    .attr('width', width)
+                    .attr('height', height);
+
+                const simulation = d3.forceSimulation(nodes)
+                    .force('link', d3.forceLink(links).id(d => d.id).distance(80))
+                    .force('charge', d3.forceManyBody().strength(-200))
+                    .force('center', d3.forceCenter(width / 2, height / 2));
+
+                const g = svg.append('g');
+
+                // Zoom
+                const zoomBehavior = d3.zoom()
+                    .scaleExtent([0.1, 8])
+                    .on('zoom', (event) => {
+                        g.attr('transform', event.transform);
+                    });
+                svg.call(zoomBehavior);
+                svgSelectionRef.current = svg;
+                zoomBehaviorRef.current = zoomBehavior;
+
+                // Links
+                const isBlockLink = (d) => d.type.toLowerCase().includes('block');
+                const isHierarchyLink = (d) => d.type === 'hierarchy';
+                const linkColor = (d) => d.crossProject ? '#00897B' : (isBlockLink(d) ? '#C62828' : (isHierarchyLink(d) ? '#4527A0' : '#999'));
+                const linkMarker = (d) => d.crossProject ? 'url(#arrowteal)' : (isBlockLink(d) ? 'url(#arrowred)' : (isHierarchyLink(d) ? 'url(#arrowpurple)' : 'url(#arrowgray)'));
+                const link = g.selectAll('line')
+                    .data(links)
+                    .enter()
+                    .append('line')
+                    .attr('stroke', linkColor)
+                    .attr('stroke-width', d => d.crossProject ? 3 : (isBlockLink(d) ? 2 : (isHierarchyLink(d) ? 2 : 1)))
+                    .attr('stroke-dasharray', d => isBlockLink(d) || isHierarchyLink(d) || d.crossProject ? '0' : '5,5')
+                    .attr('marker-end', linkMarker);
+
+                // Arrow markers
+                svg.append('defs').selectAll('marker')
+                    .data(['arrowred', 'arrowgray', 'arrowpurple', 'arrowteal'])
+                    .enter()
+                    .append('marker')
+                    .attr('id', d => d)
+                    .attr('viewBox', '0 -5 10 10')
+                    .attr('refX', 20)
+                    .attr('refY', 0)
+                    .attr('markerWidth', 6)
+                    .attr('markerHeight', 6)
+                    .attr('orient', 'auto')
+                    .append('path')
+                    .attr('d', 'M0,-5L10,0L0,5')
+                    .attr('fill', d => d === 'arrowred' ? '#C62828' : (d === 'arrowpurple' ? '#4527A0' : (d === 'arrowteal' ? '#00897B' : '#999')));
+
+                // Blocked halo — solid red ring, drawn beneath the critical-path halo
+                const blockedHalo = g.selectAll('circle.blocked-halo')
+                    .data(nodes.filter(d => d.blockerCount > 0))
+                    .enter()
+                    .append('circle')
+                    .attr('class', 'blocked-halo')
+                    .attr('r', d => (d.blockerCount > 0 ? 10 : 6) + 4)
+                    .attr('fill', 'none')
+                    .attr('stroke', '#C62828')
+                    .attr('stroke-width', 2.5)
+                    .attr('opacity', 0.85);
+
+                // Critical-path halo (rendered beneath nodes, outside the blocked halo)
+                const halo = g.selectAll('circle.halo')
+                    .data(nodes.filter(d => d.onCriticalPath))
+                    .enter()
+                    .append('circle')
+                    .attr('class', 'halo')
+                    .attr('r', d => (d.blockerCount > 0 ? 10 : 6) + 8)
+                    .attr('fill', 'none')
+                    .attr('stroke', '#FFC107')
+                    .attr('stroke-width', 3)
+                    .attr('stroke-dasharray', '3,3');
+
+                // Nodes — fill = status, stroke = issue type
+                const node = g.selectAll('circle.issue-node')
+                    .data(nodes)
+                    .enter()
+                    .append('circle')
+                    .attr('class', 'issue-node')
+                    .attr('r', d => d.blockerCount > 0 ? 10 : 6)
+                    .attr('fill', d => STATUS_COLORS[getStatusBadgeClass(d.status)] || STATUS_COLORS['status-todo'])
+                    .attr('stroke', d => getTypeColor(d.type))
+                    .attr('stroke-width', 3)
+                    .style('cursor', 'pointer')
+                    .on('click', (event, d) => focusOnLineage(d.id))
+                    .call(d3.drag()
+                        .on('start', dragstarted)
+                        .on('drag', dragged)
+                        .on('end', dragended));
+
+                // Labels
+                const labels = g.selectAll('text')
+                    .data(nodes)
+                    .enter()
+                    .append('text')
+                    .attr('text-anchor', 'middle')
+                    .attr('dy', '.3em')
+                    .attr('font-size', '11px')
+                    .attr('font-weight', 'bold')
+                    .attr('paint-order', 'stroke')
+                    .attr('stroke', 'rgba(0,0,0,0.65)')
+                    .attr('stroke-width', 3)
+                    .attr('stroke-linejoin', 'round')
+                    .attr('fill', 'white')
+                    .style('pointer-events', 'none')
+                    .text(d => d.id);
+
+                simulation.on('tick', () => {
+                    link
+                        .attr('x1', d => d.source.x)
+                        .attr('y1', d => d.source.y)
+                        .attr('x2', d => d.target.x)
+                        .attr('y2', d => d.target.y);
+
+                    blockedHalo
+                        .attr('cx', d => d.x)
+                        .attr('cy', d => d.y);
+
+                    halo
+                        .attr('cx', d => d.x)
+                        .attr('cy', d => d.y);
+
+                    node
+                        .attr('cx', d => d.x)
+                        .attr('cy', d => d.y);
+
+                    labels
+                        .attr('x', d => d.x)
+                        .attr('y', d => d.y);
+                });
+
+                function dragstarted(event, d) {
+                    if (!event.active) simulation.alphaTarget(0.3).restart();
+                    d.fx = d.x;
+                    d.fy = d.y;
+                }
+
+                function dragged(event, d) {
+                    d.fx = event.x;
+                    d.fy = event.y;
+                }
+
+                function dragended(event, d) {
+                    if (!event.active) simulation.alphaTarget(0);
+                    d.fx = null;
+                    d.fy = null;
+                }
+            };
+
+            const handleZoomIn = () => {
+                if (svgSelectionRef.current && zoomBehaviorRef.current) {
+                    svgSelectionRef.current.transition().duration(200).call(zoomBehaviorRef.current.scaleBy, 1.4);
+                }
+            };
+
+            const handleZoomOut = () => {
+                if (svgSelectionRef.current && zoomBehaviorRef.current) {
+                    svgSelectionRef.current.transition().duration(200).call(zoomBehaviorRef.current.scaleBy, 1 / 1.4);
+                }
+            };
+
+            const handleZoomReset = () => {
+                if (svgSelectionRef.current && zoomBehaviorRef.current) {
+                    svgSelectionRef.current.transition().duration(200).call(zoomBehaviorRef.current.transform, d3.zoomIdentity);
+                }
+            };
+
+            const getStatusBadgeClass = (status) => {
+                const lower = status.toLowerCase();
+                if (lower.includes('to do')) return 'status-todo';
+                if (lower.includes('progress')) return 'status-inprogress';
+                if (lower.includes('review')) return 'status-review';
+                if (lower.includes('done')) return 'status-done';
+                return 'status-todo';
+            };
+
+            const getPriorityClass = (priority) => {
+                const lower = priority.toLowerCase();
+                if (lower.includes('highest') || lower.includes('high')) return 'priority-high';
+                if (lower.includes('medium')) return 'priority-medium';
+                return 'priority-low';
+            };
+
+            const selectedIssueData = issues.find(i => i.key === selectedIssue);
+            const tableLinkLabels = getAllLinkLabels();
+
+            const presentTypes = [...new Set(issues.map(getIssueType))].sort();
+
+            const typeStatusLegend = (
+                <div className="legend-group">
+                    <div className="legend-group-title">Issue Type</div>
+                    <div className="legend">
+                        {presentTypes.map(type => (
+                            <div className="legend-item" key={type}>
+                                <div className="legend-box" style={{ background: getTypeColor(type) }}></div>
+                                <span>{type}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="legend-group-title">Status</div>
+                    <div className="legend">
+                        {STATUS_LEGEND.map(s => (
+                            <div className="legend-item" key={s.label}>
+                                <div className="legend-box" style={{ background: STATUS_COLORS[s.cls] }}></div>
+                                <span>{s.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="container">
+                    <div className="header">
+                        <h1>🔗 JIRA Critical Path Analyzer</h1>
+                        <p>Extract dependencies, visualize relationships, and identify blockers across all accessible projects</p>
+                    </div>
+
+                    <div className="form-section">
+                        <div className="form-group" style={{ marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px solid #eee' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                                <span>Proxy Server URL</span>
+                                <span
+                                    className={`proxy-status ${proxyStatus}`}
+                                    title={proxyStatusMsg}
+                                    onClick={() => checkProxyHealth(formData.proxyUrl)}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <span className="proxy-status-dot"></span>
+                                    {proxyStatus === 'online' && 'Running'}
+                                    {proxyStatus === 'offline' && 'Errored'}
+                                    {proxyStatus === 'checking' && 'Checking...'}
+                                </span>
+                            </label>
+                            <input
+                                type="text"
+                                name="proxyUrl"
+                                value={formData.proxyUrl}
+                                onChange={handleFormChange}
+                                placeholder="http://localhost:3000"
+                            />
+                            <p style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                                ℹ️ Point to your JIRA proxy server (e.g., Docker container or local Node.js instance)
+                            </p>
+                            {proxyStatus === 'offline' && (
+                                <p style={{ fontSize: '12px', color: '#C62828', marginTop: '4px' }}>
+                                    ⚠️ {proxyStatusMsg} — verify the proxy container/process is running and the URL is correct.
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Tenant URL</label>
+                                <input
+                                    type="text"
+                                    name="tenantUrl"
+                                    value={formData.tenantUrl}
+                                    onChange={handleFormChange}
+                                    placeholder="https://subdomain.atlassian.net"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Email</label>
+                                <input
+                                    type="email"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleFormChange}
+                                    placeholder="user@example.com"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>API Token / Password</label>
+                                <input
+                                    type="password"
+                                    name="token"
+                                    value={formData.token}
+                                    onChange={handleFormChange}
+                                    placeholder="Your JIRA API token"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="scope-picker">
+                            <div className="scope-picker-header">
+                                <div>
+                                    <strong style={{ fontSize: '13px' }}>Scope (optional)</strong>
+                                    <div style={{ fontSize: '12px', color: '#666' }}>
+                                        Load the project/issue-type list first, then narrow it down before fetching — instead of finding out what's in there only after a full fetch.
+                                    </div>
+                                </div>
+                                <button onClick={loadMetadata} disabled={metadataStatus === 'loading'}>
+                                    {metadataStatus === 'loading' ? 'Loading...' : (metadataStatus === 'loaded' ? '🔄 Reload Projects & Issue Types' : '🔍 Load Projects & Issue Types')}
+                                </button>
+                            </div>
+
+                            {metadataStatus === 'error' && (
+                                <div className="status-message error">⚠️ Could not load projects/issue types: {metadataError}</div>
+                            )}
+
+                            {metadataStatus === 'loaded' && (
+                                <>
+                                    <div className="scope-picker-columns">
+                                        <div>
+                                            <div className="scope-picker-column-title">
+                                                <span>Projects ({selectedProjects.size} of {availableProjects.length} selected)</span>
+                                                <span>
+                                                    <button onClick={() => setSelectedProjects(new Set(availableProjects.map(p => p.key)))}>All</button>
+                                                    {' · '}
+                                                    <button onClick={() => setSelectedProjects(new Set())}>None</button>
+                                                </span>
+                                            </div>
+                                            <div className="scope-picker-list">
+                                                {availableProjects.map(p => (
+                                                    <label key={p.key}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedProjects.has(p.key)}
+                                                            onChange={() => toggleProject(p.key)}
+                                                        />
+                                                        {p.key} — {p.name}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="scope-picker-column-title">
+                                                <span>Issue Types ({selectedIssueTypes.size} of {availableIssueTypes.length} selected)</span>
+                                                <span>
+                                                    <button onClick={() => setSelectedIssueTypes(new Set(availableIssueTypes.map(t => t.name)))}>All</button>
+                                                    {' · '}
+                                                    <button onClick={() => setSelectedIssueTypes(new Set())}>None</button>
+                                                </span>
+                                            </div>
+                                            <div className="scope-picker-list">
+                                                {availableIssueTypes.map(t => (
+                                                    <label key={t.id}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedIssueTypes.has(t.name)}
+                                                            onChange={() => toggleIssueType(t.name)}
+                                                        />
+                                                        {t.name}{t.subtask ? ' (subtask)' : ''}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style={{ marginTop: '10px' }}>
+                                        <button onClick={applyScopeToJQL}>✅ Apply Scope to JQL</button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="form-group">
+                            <label>JQL Query (optional)</label>
+                            <textarea
+                                name="jql"
+                                value={formData.jql}
+                                onChange={handleFormChange}
+                                rows="2"
+                                placeholder='Default covers all accessible projects. Scope it, e.g. project = TMD AND status != Done order by updated DESC'
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button onClick={fetchIssues} disabled={loading}>
+                                {loading ? (
+                                    <>
+                                        <span className="loading-spinner"></span> Fetching...
+                                    </>
+                                ) : (
+                                    '🔄 Fetch & Analyze'
+                                )}
+                            </button>
+                            {loading && (
+                                <button className="btn-danger" onClick={cancelFetch}>
+                                    ⏹ Stop
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {logs.length > 0 && (
+                        <div className="log-panel">
+                            <div className="log-panel-header">
+                                <span className="log-panel-title">
+                                    {loading && <span className="live-dot"></span>}
+                                    {loading ? `Activity Log — running (${formatElapsed(runElapsedMs)})` : 'Activity Log'}
+                                </span>
+                                {!loading && (
+                                    <button className="log-clear-btn" onClick={() => setLogs([])}>Clear</button>
+                                )}
+                            </div>
+                            {logs.map((log, idx) => (
+                                <div className={`log-line ${log.level}`} key={idx}>
+                                    <span className="log-time">{log.time}</span>
+                                    <span className="log-message">{log.message}</span>
+                                </div>
+                            ))}
+                            <div ref={logsEndRef}></div>
+                        </div>
+                    )}
+
+                    {error && <div className="status-message error">⚠️ {error}</div>}
+                    {!error && zeroResults && (
+                        <div className="status-message warn">
+                            ⚠️ No issues matched this query — 0 results returned for JQL: <code>{formData.jql || '(default)'}</code>. Check the project key/JQL syntax and that your account can see it, then try again.
+                        </div>
+                    )}
+                    {loading && <div className="status-message loading">📊 Analyzing dependencies...</div>}
+
+                    {issues.length > 0 && (
+                        <>
+                            <div className="stats-grid">
+                                <div className="stat-card">
+                                    <div className="stat-label">Total Issues</div>
+                                    <div className="stat-value">{issues.length}</div>
+                                </div>
+                                <div className="stat-card">
+                                    <div className="stat-label">Dependencies</div>
+                                    <div className="stat-value">{dependencies.length}</div>
+                                </div>
+                                <div className="stat-card">
+                                    <div className="stat-label">Critical Path Length</div>
+                                    <div className="stat-value">{criticalPath.length}</div>
+                                </div>
+                                <div className="stat-card">
+                                    <div className="stat-label">Blocked Issues</div>
+                                    <div className="stat-value">{new Set(dependencies.filter(d => d.type.toLowerCase().includes('block')).map(d => d.to)).size}</div>
+                                </div>
+                                <div className="stat-card">
+                                    <div className="stat-label">Cross-Project Issues</div>
+                                    <div className="stat-value">{crossProjectIssueKeys.size}</div>
+                                </div>
+                            </div>
+
+                            <div className="tabs">
+                                <button
+                                    className={`tab-button ${activeTab === 'graph' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('graph')}
+                                >
+                                    📊 Dependency Graph
+                                </button>
+                                <button
+                                    className={`tab-button ${activeTab === 'table' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('table')}
+                                >
+                                    📋 Table
+                                </button>
+                                <button
+                                    className={`tab-button ${activeTab === 'crossproject' ? 'active' : ''}`}
+                                    onClick={() => setActiveTab('crossproject')}
+                                >
+                                    🔗 Cross-Project ({crossProjectDependencies.length})
+                                </button>
+                            </div>
+
+                            <div className="tab-content">
+                                {activeTab === 'graph' && (
+                                    <div>
+                                        {typeStatusLegend}
+                                        <div className="legend-group-title">Graph Markers</div>
+                                        <div className="legend">
+                                            <div className="legend-item">
+                                                <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#FFC107" strokeWidth="2" strokeDasharray="2,2" /></svg>
+                                                <span>On Critical Path</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <svg width="26" height="16"><circle cx="7" cy="8" r="4" fill="#6B778C" /><circle cx="19" cy="8" r="7" fill="#6B778C" /></svg>
+                                                <span>Larger = more blockers</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <span>Fill = status, ring = issue type</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <svg width="20" height="2"><line x1="0" y1="1" x2="20" y2="1" stroke="#C62828" strokeWidth="2" /></svg>
+                                                <span>Blocks</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <svg width="20" height="2"><line x1="0" y1="1" x2="20" y2="1" stroke="#999" strokeDasharray="5,5" strokeWidth="1" /></svg>
+                                                <span>Related</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <svg width="20" height="2"><line x1="0" y1="1" x2="20" y2="1" stroke="#4527A0" strokeWidth="2" /></svg>
+                                                <span>Parent ↔ Subtask</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="none" stroke="#C62828" strokeWidth="2" /></svg>
+                                                <span>Blocked (has an open blocker)</span>
+                                            </div>
+                                            <div className="legend-item">
+                                                <svg width="20" height="2"><line x1="0" y1="1" x2="20" y2="1" stroke="#00897B" strokeWidth="3" /></svg>
+                                                <span>Cross-project link</span>
+                                            </div>
+                                        </div>
+                                        <div className="graph-toolbar">
+                                            <input
+                                                type="text"
+                                                className="key-filter-input"
+                                                placeholder="Filter by key(s), e.g. TMD-10, TMD-15"
+                                                value={keyFilterInput}
+                                                onChange={(e) => setKeyFilterInput(e.target.value)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') applyKeyFilterInput(); }}
+                                            />
+                                            <button onClick={applyKeyFilterInput} title="Show these issues and everything they link to">Focus</button>
+                                            <button
+                                                className={`tab-button ${showBlockedOnly ? 'active' : ''}`}
+                                                style={{ padding: '6px 12px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px' }}
+                                                onClick={() => setShowBlockedOnly(v => !v)}
+                                                title="Show only issues involved in a blocking relationship"
+                                            >
+                                                🚧 {showBlockedOnly ? 'Showing blocked issues only' : 'Show blocked issues only'}
+                                            </button>
+                                            <button
+                                                className={`tab-button ${showCrossProjectOnly ? 'active' : ''}`}
+                                                style={{ padding: '6px 12px', fontSize: '13px', border: '1px solid #ddd', borderRadius: '4px' }}
+                                                onClick={() => setShowCrossProjectOnly(v => !v)}
+                                                title="Show only issues linked to an issue in a different project"
+                                            >
+                                                🔗 {showCrossProjectOnly ? 'Showing cross-project issues only' : 'Show cross-project issues only'}
+                                            </button>
+                                            {lineageFocusKeys.length > 0 ? (
+                                                <span className="lineage-focus-badge">
+                                                    🔍 Focused on {lineageFocusKeys.join(', ')} ({getUnionLineageKeys(lineageFocusKeys).size} issues incl. links)
+                                                    <button onClick={clearLineageFocus} title="Show full graph">✕ Clear</button>
+                                                </span>
+                                            ) : (
+                                                <span className="lineage-hint">Type one or more keys above, or click a node, to isolate its dependency lineage (blockers/blocked-by/subtasks/relates)</span>
+                                            )}
+                                        </div>
+                                        <div className="graph-wrapper">
+                                            <div className="zoom-controls">
+                                                <button className="zoom-btn" onClick={handleZoomIn} title="Zoom in">+</button>
+                                                <button className="zoom-btn" onClick={handleZoomOut} title="Zoom out">−</button>
+                                                <button className="zoom-btn reset" onClick={handleZoomReset} title="Reset zoom">⤢</button>
+                                            </div>
+                                            <div className="graph-container" ref={graphRef}></div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'table' && (
+                                    <div>
+                                        {typeStatusLegend}
+                                        <div className="controls">
+                                            <input
+                                                type="text"
+                                                className="filter-input"
+                                                placeholder="Filter by key, summary, or assignee..."
+                                                value={filterText}
+                                                onChange={(e) => setFilterText(e.target.value)}
+                                            />
+                                            <button onClick={exportCSV}>📥 Export CSV</button>
+                                        </div>
+
+                                        <div className="table-container">
+                                            <table>
+                                                <thead>
+                                                    <tr>
+                                                        <th onClick={() => handleSort('key')}>
+                                                            Key {sortColumn === 'key' && (sortDesc ? '▼' : '▲')}
+                                                        </th>
+                                                        <th onClick={() => handleSort('summary')}>
+                                                            Summary {sortColumn === 'summary' && (sortDesc ? '▼' : '▲')}
+                                                        </th>
+                                                        <th>Type</th>
+                                                        <th onClick={() => handleSort('status')}>
+                                                            Status {sortColumn === 'status' && (sortDesc ? '▼' : '▲')}
+                                                        </th>
+                                                        <th onClick={() => handleSort('priority')}>
+                                                            Priority {sortColumn === 'priority' && (sortDesc ? '▼' : '▲')}
+                                                        </th>
+                                                        <th onClick={() => handleSort('assignee')}>
+                                                            Assignee {sortColumn === 'assignee' && (sortDesc ? '▼' : '▲')}
+                                                        </th>
+                                                        <th>Subtasks</th>
+                                                        <th>Parent</th>
+                                                        {tableLinkLabels.map(label => (
+                                                            <th key={label}>{formatLinkLabel(label)}</th>
+                                                        ))}
+                                                        <th>Critical Path</th>
+                                                        <th>Cross-Project</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {sortedIssues.map(issue => (
+                                                        <tr
+                                                            key={issue.key}
+                                                            className={[
+                                                                isOnCriticalPath(issue.key) ? 'critical-path-highlight' : '',
+                                                                isCrossProject(issue.key) ? 'cross-project-highlight' : ''
+                                                            ].filter(Boolean).join(' ')}
+                                                        >
+                                                            <td className="issue-key" onClick={() => setSelectedIssue(issue.key)} style={{ cursor: 'pointer' }}>
+                                                                {issue.key}
+                                                            </td>
+                                                            <td>{issue.fields.summary.substring(0, 60)}</td>
+                                                            <td>
+                                                                <span className="type-badge" style={{ background: getTypeColor(getIssueType(issue)), color: 'white' }}>
+                                                                    {getIssueType(issue)}
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <span className={`status-badge ${getStatusBadgeClass(getIssueStatus(issue))}`}>
+                                                                    {getIssueStatus(issue)}
+                                                                </span>
+                                                            </td>
+                                                            <td className={getPriorityClass(getIssuePriority(issue))}>
+                                                                {getIssuePriority(issue)}
+                                                            </td>
+                                                            <td>{issue.fields.assignee?.displayName || 'Unassigned'}</td>
+                                                            <td>
+                                                                {(() => {
+                                                                    const subtasks = getSubtaskKeys(issue);
+                                                                    return subtasks.length > 0 ? subtasks.map((k, i) => (
+                                                                        <React.Fragment key={k}>
+                                                                            {i > 0 && ', '}
+                                                                            <a onClick={() => setSelectedIssue(k)} style={{ cursor: 'pointer' }}>{k}</a>
+                                                                        </React.Fragment>
+                                                                    )) : '—';
+                                                                })()}
+                                                            </td>
+                                                            <td>
+                                                                {(() => {
+                                                                    const parentKey = getParentKey(issue);
+                                                                    return parentKey ? (
+                                                                        <a onClick={() => setSelectedIssue(parentKey)} style={{ cursor: 'pointer' }}>
+                                                                            {parentKey}
+                                                                        </a>
+                                                                    ) : '—';
+                                                                })()}
+                                                            </td>
+                                                            {tableLinkLabels.map(label => (
+                                                                <td key={label}>
+                                                                    {(() => {
+                                                                        const keys = getLinkedKeysByLabel(issue, label);
+                                                                        return keys.length > 0 ? keys.map((k, i) => (
+                                                                            <React.Fragment key={k}>
+                                                                                {i > 0 && ', '}
+                                                                                <a onClick={() => setSelectedIssue(k)} style={{ cursor: 'pointer' }}>{k}</a>
+                                                                            </React.Fragment>
+                                                                        )) : '—';
+                                                                    })()}
+                                                                </td>
+                                                            ))}
+                                                            <td>{isOnCriticalPath(issue.key) ? '⭐ Yes' : '—'}</td>
+                                                            <td>{isCrossProject(issue.key) ? '🔗 Yes' : '—'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'crossproject' && (
+                                    <div>
+                                        <p style={{ fontSize: '13px', color: '#666', marginBottom: '15px' }}>
+                                            Every dependency link whose two issues belong to different projects (by JIRA key prefix) — {crossProjectDependencies.length} link(s) across {crossProjectIssueKeys.size} issue(s).
+                                        </p>
+                                        {crossProjectDependencies.length === 0 ? (
+                                            <div className="status-message">No cross-project links found in this result set.</div>
+                                        ) : (
+                                            <div className="table-container">
+                                                <table>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>From</th>
+                                                            <th>From Project</th>
+                                                            <th>Relationship</th>
+                                                            <th>To</th>
+                                                            <th>To Project</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {[...crossProjectDependencies]
+                                                            .sort((a, b) => a.from.localeCompare(b.from))
+                                                            .map((dep, idx) => (
+                                                                <tr key={`${dep.from}-${dep.to}-${dep.label}-${idx}`}>
+                                                                    <td className="issue-key" onClick={() => setSelectedIssue(dep.from)} style={{ cursor: 'pointer' }}>
+                                                                        {dep.from}
+                                                                    </td>
+                                                                    <td>{getProjectKey(dep.from)}</td>
+                                                                    <td>{formatLinkLabel(dep.label)}</td>
+                                                                    <td className="issue-key" onClick={() => setSelectedIssue(dep.to)} style={{ cursor: 'pointer' }}>
+                                                                        {dep.to}
+                                                                    </td>
+                                                                    <td>{getProjectKey(dep.to)}</td>
+                                                                </tr>
+                                                            ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+
+                    {selectedIssueData && (
+                        <div className="detail-panel">
+                            <div className="detail-header">
+                                <div>
+                                    <h3>{selectedIssue}</h3>
+                                    <p style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>{selectedIssueData.fields.summary}</p>
+                                </div>
+                                <button className="detail-close" onClick={() => setSelectedIssue(null)}>✕</button>
+                            </div>
+
+                            <div className="detail-content">
+                                <div className="detail-field">
+                                    <div className="detail-label">Type</div>
+                                    <div className="detail-value">
+                                        <span className="type-badge" style={{ background: getTypeColor(getIssueType(selectedIssueData)), color: 'white' }}>
+                                            {getIssueType(selectedIssueData)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="detail-field">
+                                    <div className="detail-label">Status</div>
+                                    <div className="detail-value">
+                                        <span className={`status-badge ${getStatusBadgeClass(getIssueStatus(selectedIssueData))}`}>
+                                            {getIssueStatus(selectedIssueData)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="detail-field">
+                                    <div className="detail-label">Priority</div>
+                                    <div className={`detail-value ${getPriorityClass(getIssuePriority(selectedIssueData))}`}>
+                                        {getIssuePriority(selectedIssueData)}
+                                    </div>
+                                </div>
+
+                                <div className="detail-field">
+                                    <div className="detail-label">Assignee</div>
+                                    <div className="detail-value">{selectedIssueData.fields.assignee?.displayName || 'Unassigned'}</div>
+                                </div>
+
+                                <div className="detail-field">
+                                    <div className="detail-label">On Critical Path</div>
+                                    <div className="detail-value">{isOnCriticalPath(selectedIssue) ? '⭐ Yes' : 'No'}</div>
+                                </div>
+
+                                {getSubtaskKeys(selectedIssueData).length > 0 && (
+                                    <div className="detail-field">
+                                        <div className="detail-label">Subtasks</div>
+                                        <ul className="blocker-list">
+                                            {getSubtaskKeys(selectedIssueData).map(subKey => (
+                                                <li key={subKey}>
+                                                    <a onClick={() => setSelectedIssue(subKey)} style={{ cursor: 'pointer' }}>
+                                                        {subKey}
+                                                    </a>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {getParentKey(selectedIssueData) && (
+                                    <div className="detail-field">
+                                        <div className="detail-label">Parent</div>
+                                        <div className="detail-value">
+                                            <a onClick={() => setSelectedIssue(getParentKey(selectedIssueData))} style={{ cursor: 'pointer' }}>
+                                                {getParentKey(selectedIssueData)}
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {getAllLinkLabels().map(label => {
+                                    const keys = getLinkedKeysByLabel(selectedIssueData, label);
+                                    if (keys.length === 0) return null;
+                                    return (
+                                        <div className="detail-field" key={label}>
+                                            <div className="detail-label">{formatLinkLabel(label)}</div>
+                                            <ul className="blocker-list">
+                                                {keys.map(relatedKey => (
+                                                    <li key={relatedKey}>
+                                                        <a onClick={() => setSelectedIssue(relatedKey)} style={{ cursor: 'pointer' }}>
+                                                            {relatedKey}
+                                                        </a>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    );
+                                })}
+
+                                <div className="detail-field">
+                                    <div className="detail-label">Sprint</div>
+                                    <div className="detail-value">
+                                        {(() => {
+                                            const sprint = getCurrentSprint(selectedIssueData);
+                                            if (!sprint) return 'No sprint';
+                                            return (
+                                                <>
+                                                    {sprint.name}
+                                                    {sprint.state && (
+                                                        <span style={{ color: '#888', fontSize: '12px', marginLeft: '6px' }}>
+                                                            ({sprint.state})
+                                                        </span>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
+                                </div>
+
+                                <div className="detail-field">
+                                    <div className="detail-label">Due Date</div>
+                                    <div className="detail-value">{getDueDate(selectedIssueData) || 'No due date'}</div>
+                                </div>
+
+                                <div className="detail-field">
+                                    <div className="detail-label">Created</div>
+                                    <div className="detail-value">{new Date(selectedIssueData.fields.created).toLocaleDateString()}</div>
+                                </div>
+
+                                <div className="detail-field">
+                                    <div className="detail-label">Updated</div>
+                                    <div className="detail-value">{new Date(selectedIssueData.fields.updated).toLocaleDateString()}</div>
+                                </div>
+
+                                <div className="detail-field">
+                                    <button onClick={() => window.open(`${formData.tenantUrl}/browse/${selectedIssue}`, '_blank')}>
+                                        🔗 Open in JIRA
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="app-footer">
+                        <span>JIRA Critical Path Analyzer v{APP_VERSION} — {CHANGELOG[0].date}</span>
+                        <button className="app-footer-toggle" onClick={() => setShowChangelog(v => !v)}>
+                            {showChangelog ? 'Hide changelog' : "What's changed"}
+                        </button>
+                        {showChangelog && (
+                            <div className="app-footer-changelog">
+                                {CHANGELOG.map(entry => (
+                                    <div key={entry.version} className="app-footer-changelog-entry">
+                                        <div className="app-footer-changelog-version">v{entry.version} — {entry.date}</div>
+                                        <ul>
+                                            {entry.notes.map((note, i) => <li key={i}>{note}</li>)}
+                                        </ul>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<JiraCriticalPathAnalyzer />, document.getElementById('root'));
+    </script>
+</body>
+</html>

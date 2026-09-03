@@ -1,0 +1,54 @@
+# ==============================================================================
+# DOCKER COMPOSE CHEAT SHEET
+# ==============================================================================
+# - Start all services:        docker compose up -d --remove-orphans
+# - Pull latest images & start: docker compose up -d --pull always --remove-orphans
+# - Stop all services:         docker compose down
+# - View running containers:   docker compose ps
+# - View real-time logs:       docker compose logs -f
+# - Restart a single service:  docker compose restart <service_name>
+# - Check resource usage:      docker stats
+# - Clean removed services:    docker compose up -d --remove-orphans
+# - Clean up old images:       docker image prune -f
+# ==============================================================================
+
+services:
+  jira-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.jira-proxy
+    container_name: jira-proxy
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - jira-analyzer
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  jira-frontend:
+    image: nginx:alpine
+    container_name: jira-frontend
+    ports:
+      - "8085:80"
+    volumes:
+      - ./jira-critical-path.html:/usr/share/nginx/html/index.html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      jira-proxy:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - jira-analyzer
+
+networks:
+  jira-analyzer:
+    driver: bridge

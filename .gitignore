@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Runtime data — exported analyses and cached JIRA pages contain real
+# customer/project data and must never be committed
+logs/*
+!logs/.gitkeep
+
+# Environment / secrets
+.env
+.env.*
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
