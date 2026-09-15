@@ -3,6 +3,7 @@
 ![Last Commit](https://img.shields.io/github/last-commit/adambeltz2/JIRA-Critical-Path-Analyzer)
 ![Docker Pulls](https://img.shields.io/docker/pulls/adambeltz/jira-critical-path-analyzer)
 ![License](https://img.shields.io/github/license/adambeltz2/JIRA-Critical-Path-Analyzer)
+[![Buy Me A Coffee](https://img.shields.io/badge/-Buy%20Me%20A%20Coffee-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/adambeltz)
 
 A production-ready tool to extract JIRA dependencies, visualize relationships, and identify blockers across all accessible projects.
 
