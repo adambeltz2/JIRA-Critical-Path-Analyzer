@@ -36,3 +36,11 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/jira-critical-path-analyzer:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/jira-critical-path-analyzer:${{ steps.meta.outputs.version }}
+
+      - name: Sync README to Docker Hub
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/jira-critical-path-analyzer
+          readme-filepath: ./README.md
