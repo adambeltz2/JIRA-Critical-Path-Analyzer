@@ -1,5 +1,9 @@
 # JIRA Critical Path Analyzer
 
+![Last Commit](https://img.shields.io/github/last-commit/adambeltz2/JIRA-Critical-Path-Analyzer)
+![Docker Pulls](https://img.shields.io/docker/pulls/adambeltz/jira-critical-path-analyzer)
+![License](https://img.shields.io/github/license/adambeltz2/JIRA-Critical-Path-Analyzer)
+
 A production-ready tool to extract JIRA dependencies, visualize relationships, and identify blockers across all accessible projects.
 
 ![Demo: navigating the dependency graph, zooming, panning, and switching views](docs/demo.gif)
