@@ -6,7 +6,7 @@
 
 A production-ready tool to extract JIRA dependencies, visualize relationships, and identify blockers across all accessible projects.
 
-![Demo: navigating the dependency graph, zooming, panning, and switching views](docs/demo.gif)
+![Demo: navigating the dependency graph, zooming, panning, and switching views](https://raw.githubusercontent.com/adambeltz2/JIRA-Critical-Path-Analyzer/main/docs/demo.gif)
 
 *Demo runs against a synthetic sample dataset — not real JIRA data.*
 
@@ -14,11 +14,11 @@ A production-ready tool to extract JIRA dependencies, visualize relationships, a
 
 | File | Purpose |
 |---|---|
-| [jira-critical-path.html](jira-critical-path.html) | Single-file client: dependency graph, table view, critical path calculation |
-| [jira-proxy-server.js](jira-proxy-server.js) | Node/Express server — proxies JIRA Cloud REST API v3 (works around browser CORS) **and** serves `jira-critical-path.html` at `GET /` |
-| [Dockerfile](Dockerfile) | Single-image build: one container runs both the client and the proxy API |
-| [docker-compose.yml](docker-compose.yml) | Runs that one `jira-analyzer` service (host port 3000 → container 3000) |
-| [package.json](package.json) | Server dependencies (`express`, `cors`, `axios`) |
+| [jira-critical-path.html](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/jira-critical-path.html) | Single-file client: dependency graph, table view, critical path calculation |
+| [jira-proxy-server.js](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/jira-proxy-server.js) | Node/Express server — proxies JIRA Cloud REST API v3 (works around browser CORS) **and** serves `jira-critical-path.html` at `GET /` |
+| [Dockerfile](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/Dockerfile) | Single-image build: one container runs both the client and the proxy API |
+| [docker-compose.yml](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/docker-compose.yml) | Runs that one `jira-analyzer` service (host port 3000 → container 3000) |
+| [package.json](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/package.json) | Server dependencies (`express`, `cors`, `axios`) |
 
 ## Quick start
 
@@ -30,8 +30,8 @@ docker run -d --name jira-analyzer -p 3000:3000 -v "$(pwd)/logs:/app/logs" \
 ```
 
 No clone needed. Images are published automatically on version tags via
-[.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) — see
-[SETUP.md](SETUP.md#building--publishing-to-docker-hub) for the required repo secrets and
+[.github/workflows/docker-publish.yml](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/.github/workflows/docker-publish.yml) — see
+[SETUP.md](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/SETUP.md#building--publishing-to-docker-hub) for the required repo secrets and
 the manual publish steps if you'd rather push by hand.
 
 ### Option B: Clone and build with Docker Compose
@@ -42,7 +42,7 @@ cd JIRA-Critical-Path-Analyzer
 docker compose up -d --remove-orphans
 ```
 
-Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose (bundled with Docker Desktop). See [SETUP.md](SETUP.md) if you'd rather run it standalone with local Node instead of Docker.
+Requires [Docker](https://docs.docker.com/get-docker/) and Docker Compose (bundled with Docker Desktop). See [SETUP.md](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/SETUP.md) if you'd rather run it standalone with local Node instead of Docker.
 
 ### Then
 
@@ -62,9 +62,9 @@ The default query (`project is not EMPTY ORDER BY updated ASC`) pulls every issu
 project = TMD ORDER BY updated ASC
 ```
 
-Swap `TMD` for your project's key (visible in its issue keys, e.g. `TMD-123`). This is the same field the default query lives in — just overwrite it before clicking **Fetch & Analyze**. More JQL examples (multiple projects, status filters, date ranges) are in [SETUP.md](SETUP.md).
+Swap `TMD` for your project's key (visible in its issue keys, e.g. `TMD-123`). This is the same field the default query lives in — just overwrite it before clicking **Fetch & Analyze**. More JQL examples (multiple projects, status filters, date ranges) are in [SETUP.md](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/SETUP.md).
 
-Full setup options (Docker Compose, standalone proxy, local Node), JQL examples, troubleshooting, and the proxy API reference live in [SETUP.md](SETUP.md).
+Full setup options (Docker Compose, standalone proxy, local Node), JQL examples, troubleshooting, and the proxy API reference live in [SETUP.md](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/SETUP.md).
 
 ## Architecture
 
@@ -97,7 +97,7 @@ does not persist or transform JIRA data.
 
 ## Other docs
 
-- [SETUP.md](SETUP.md) — detailed setup, troubleshooting, API reference
-- [Changelog.md](Changelog.md) — release history
-- [backlog.md](backlog.md) — known gaps and deferred work
-- [CLAUDE.md](CLAUDE.md) — agent working conventions for this repo
+- [SETUP.md](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/SETUP.md) — detailed setup, troubleshooting, API reference
+- [Changelog.md](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/Changelog.md) — release history
+- [backlog.md](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/backlog.md) — known gaps and deferred work
+- [CLAUDE.md](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/CLAUDE.md) — agent working conventions for this repo
