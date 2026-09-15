@@ -3,6 +3,7 @@ const cors = require('cors');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,10 +15,72 @@ if (!fs.existsSync(logsDir)) {
 }
 
 // Middleware
-app.use(cors());
+
+// CORS is only needed when the client is served from a different origin than this proxy
+// (e.g. Option B in SETUP.md, or a custom deployment). The default single-image deployment
+// serves the client from GET / on this same origin, so same-origin fetches work with no CORS
+// headers at all — leaving ALLOWED_ORIGIN unset disables cross-origin access entirely, which
+// is the safest default for anything reachable beyond localhost.
+const allowedOrigin = process.env.ALLOWED_ORIGIN;
+if (allowedOrigin) {
+  app.use(cors({ origin: allowedOrigin }));
+}
+
 // Raised from the default 100kb — a full CSV export for a large tenant (tens of thousands of
 // issues) comfortably exceeds that.
 app.use(express.json({ limit: '100mb' }));
+
+// Optional shared-secret auth for the /api/* routes. Off by default (no API_KEY set) to keep
+// the out-of-the-box Docker Hub image working with zero config; set API_KEY to require every
+// /api/* request to carry a matching X-API-Key header before it's allowed through to JIRA —
+// this proxy will otherwise happily relay a request to *any* tenantUrl the caller supplies, so
+// anyone who can reach it on the network can use it as an open relay without this.
+// /health is intentionally excluded so the Docker healthcheck (which doesn't send this header)
+// keeps working regardless.
+const apiKey = process.env.API_KEY;
+function requireApiKey(req, res, next) {
+  if (!apiKey) return next();
+  const provided = req.get('X-API-Key') || '';
+  const expected = Buffer.from(apiKey);
+  const actual = Buffer.from(provided);
+  const valid = expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  if (!valid) {
+    return res.status(401).json({ error: 'Unauthorized — missing or invalid X-API-Key header' });
+  }
+  next();
+}
+
+// Simple in-memory fixed-window rate limiter, per client IP, scoped to /api/*. This is a
+// single-process/single-container deployment (no shared store across replicas), which is all
+// this needs — it's here to blunt casual abuse/credential-stuffing against the proxy, not to
+// stand in for a production API gateway. Configurable via env vars since tenant/query size
+// varies a lot; defaults are generous for a single interactive user.
+const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 60_000;
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 30;
+const rateLimitHits = new Map(); // ip -> { count, windowStart }
+setInterval(() => {
+  const cutoff = Date.now() - RATE_LIMIT_WINDOW_MS;
+  for (const [ip, entry] of rateLimitHits) {
+    if (entry.windowStart < cutoff) rateLimitHits.delete(ip);
+  }
+}, RATE_LIMIT_WINDOW_MS).unref();
+
+function rateLimit(req, res, next) {
+  const ip = req.ip;
+  const now = Date.now();
+  const entry = rateLimitHits.get(ip);
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimitHits.set(ip, { count: 1, windowStart: now });
+    return next();
+  }
+  entry.count += 1;
+  if (entry.count > RATE_LIMIT_MAX) {
+    return res.status(429).json({ error: 'Too many requests — please slow down and try again shortly.' });
+  }
+  next();
+}
+
+app.use('/api', rateLimit, requireApiKey);
 
 // Serve the single-file client at the root. Deliberately not express.static(__dirname) —
 // that would also expose package.json, this server's own source, and anything else dropped

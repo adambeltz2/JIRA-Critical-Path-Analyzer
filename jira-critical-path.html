@@ -777,8 +777,13 @@
 
         // Bump on every meaningful change and add an entry below — this is the only place that
         // tracks version history for this single-file app (no build step, not a git repo).
-        const APP_VERSION = '1.10.0';
+        const APP_VERSION = '1.11.0';
         const CHANGELOG = [
+            { version: '1.11.0', date: '2026-09-15', notes: [
+                'Lock down CORS by default (was wide-open) — only enabled if the proxy sets ALLOWED_ORIGIN',
+                'Add optional API_KEY proxy auth: set it server-side and enter the same value in the new "Proxy API Key" field to require it on every /api/* request',
+                'Add a simple in-memory rate limiter on /api/* (configurable via RATE_LIMIT_WINDOW_MS / RATE_LIMIT_MAX)'
+            ]},
             { version: '1.10.0', date: '2026-09-03', notes: [
                 'Add a Gantt tab (shown once any fetched issue has a due date): one bar per issue, start approximated from its created date, end from its due date, gold dashed outline for critical-path issues, and a "today" reference line',
                 'Add "Export CSV" to the Gantt tab (buildGanttCSV) — one row per issue with its computed start/end/duration, consistent with the existing table export'
@@ -816,6 +821,9 @@
                 // The proxy now also serves this file (single-image deployment), so the
                 // proxy and the page are always same-origin by default — no port to guess.
                 proxyUrl: window.location.origin,
+                // Only needed if the proxy was started with an API_KEY env var — blank is fine
+                // (and the default) otherwise. Sent as X-API-Key on every /api/* request.
+                proxyApiKey: '',
                 tenantUrl: '',
                 email: '',
                 token: '',
@@ -889,6 +897,13 @@
                 return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
             };
 
+            // /health is intentionally excluded — it's called before the user has necessarily
+            // filled in an API key, and the server doesn't require one on that route either.
+            const apiHeaders = () => ({
+                'Content-Type': 'application/json',
+                ...(formData.proxyApiKey ? { 'X-API-Key': formData.proxyApiKey } : {})
+            });
+
             const checkProxyHealth = useCallback(async (proxyUrlRaw) => {
                 const proxyUrl = (proxyUrlRaw || '').replace(/\/$/, '');
                 if (!proxyUrl) {
@@ -949,7 +964,7 @@
                     const proxyUrl = formData.proxyUrl.replace(/\/$/, '');
                     const response = await fetch(`${proxyUrl}/api/jira-metadata`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: apiHeaders(),
                         body: JSON.stringify({
                             tenantUrl: formData.tenantUrl,
                             email: formData.email,
@@ -973,7 +988,7 @@
                     setMetadataStatus('error');
                     setMetadataError(err.message);
                 }
-            }, [formData.proxyUrl, formData.tenantUrl, formData.email, formData.token]);
+            }, [formData.proxyUrl, formData.proxyApiKey, formData.tenantUrl, formData.email, formData.token]);
 
             const toggleProject = (key) => {
                 setSelectedProjects(prev => {
@@ -1049,7 +1064,7 @@
 
                     const validateResponse = await fetch(`${proxyUrl}/api/validate-credentials`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: apiHeaders(),
                         signal: controller.signal,
                         body: JSON.stringify({
                             tenantUrl: formData.tenantUrl,
@@ -1099,9 +1114,7 @@
                     try {
                         const response = await fetch(`${proxyUrl}/api/jira-search`, {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
+                            headers: apiHeaders(),
                             signal: controller.signal,
                             body: JSON.stringify({
                                 tenantUrl: formData.tenantUrl,
@@ -1230,7 +1243,7 @@
                         const filename = `jira-analysis-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
                         const saveResponse = await fetch(`${proxyUrl}/api/save-export`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: apiHeaders(),
                             signal: controller.signal,
                             body: JSON.stringify({ filename, content: csv })
                         });
@@ -2202,6 +2215,19 @@
                                     ⚠️ {proxyStatusMsg} — verify the proxy container/process is running and the URL is correct.
                                 </p>
                             )}
+                            <div style={{ marginTop: '10px' }}>
+                                <label>Proxy API Key (optional)</label>
+                                <input
+                                    type="password"
+                                    name="proxyApiKey"
+                                    value={formData.proxyApiKey}
+                                    onChange={handleFormChange}
+                                    placeholder="Only required if the proxy was started with API_KEY set"
+                                />
+                                <p style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                                    ℹ️ Leave blank unless your proxy operator gave you one — sent as X-API-Key on every request
+                                </p>
+                            </div>
                         </div>
 
                         <div className="form-row">
