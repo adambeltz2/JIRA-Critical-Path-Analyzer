@@ -344,8 +344,30 @@ docker compose restart
 - **Proxy only proxies to JIRA** — no data logging
 - **Use HTTPS in production** — if deploying publicly
 - **API tokens are passwords** — treat accordingly
+- **CORS is locked down by default** — the proxy sends no CORS headers at all unless you set
+  `ALLOWED_ORIGIN`, so cross-origin browser access is refused out of the box. Same-origin
+  requests (the default single-image deployment, where the proxy also serves the client) are
+  unaffected — CORS only applies to cross-origin calls in the first place. Set `ALLOWED_ORIGIN`
+  to your frontend's exact origin (e.g. `https://analyzer.example.com`) only if you're running
+  the client somewhere other than this proxy.
+- **Optional `API_KEY` for the proxy itself** — unset by default. Without it, this proxy will
+  relay a request to *any* `tenantUrl` a caller supplies, so anyone who can reach it on the
+  network can use it as an open relay. Set `API_KEY` to a random secret and every `/api/*`
+  request must then carry a matching `X-API-Key` header (enter the same value in the
+  client's "Proxy API Key" field) or it's rejected with `401`. `GET /health` is exempt so the
+  Docker healthcheck keeps working regardless.
+- **Optional rate limiting on `/api/*`** — a simple in-memory, per-IP limiter, defaulting to
+  30 requests per 60-second window (`RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS`). Exceeding it
+  returns `429`. This is a single-process limiter meant to blunt casual abuse, not a
+  substitute for a real API gateway if you're deploying at real scale.
 
 ## API Reference (Proxy Server)
+
+Every `/api/*` route below is subject to the optional `API_KEY` check and rate limiter
+described in [Security](#security): if `API_KEY` is set, requests missing a matching
+`X-API-Key` header get `401`; requests exceeding `RATE_LIMIT_MAX` in the current window get
+`429`. Neither applies when the corresponding env var is unset (the default). `GET /health`
+is exempt from both.
 
 ### POST /api/jira-search
 
@@ -473,9 +495,11 @@ If deploying to a cloud server or internal server:
 
 1. **Use HTTPS** — put a reverse proxy (Nginx, Caddy, Traefik) in front of this container
    for TLS; the container itself only speaks plain HTTP on 3000
-2. **Rate limit** the endpoint
-3. **Add authentication** (optional API key)
-4. **Lock down CORS** to your actual frontend origin instead of the current wide-open default
+2. **Set `API_KEY`** to a random secret so the proxy isn't an open relay to arbitrary JIRA
+   tenants for anyone who can reach it — see [Security](#security)
+3. **Set `ALLOWED_ORIGIN`** only if the client runs on a different origin than this proxy;
+   otherwise leave it unset (CORS is already locked down by default)
+4. **Tune `RATE_LIMIT_MAX`/`RATE_LIMIT_WINDOW_MS`** if the defaults don't fit your usage
 5. **Monitor logs** for suspicious activity
 
 Example: Deploy to an internal server via Kubernetes/container orchestration, pulling the

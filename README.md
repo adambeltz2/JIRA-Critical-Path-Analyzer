@@ -95,6 +95,7 @@ does not persist or transform JIRA data.
 - Credentials are entered in the browser and passed through the proxy per-request — never logged or persisted
 - Treat your JIRA API token like a password; never commit it to Git
 - Use HTTPS if deploying beyond localhost
+- CORS is locked down by default, with optional `API_KEY` auth and per-IP rate limiting on `/api/*` — see [SETUP.md](https://github.com/adambeltz2/JIRA-Critical-Path-Analyzer/blob/main/SETUP.md#security) for how to enable them
 
 ## Other docs
 

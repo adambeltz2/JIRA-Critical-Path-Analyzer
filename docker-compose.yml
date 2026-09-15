@@ -22,6 +22,11 @@ services:
       - ./logs:/app/logs
     environment:
       - NODE_ENV=production
+      # Optional hardening — all off by default. See SETUP.md's Security section.
+      # - ALLOWED_ORIGIN=https://your-frontend-origin.example.com
+      # - API_KEY=change-me
+      # - RATE_LIMIT_WINDOW_MS=60000
+      # - RATE_LIMIT_MAX=30
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]

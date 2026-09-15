@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.0] - 2026-09-15
+
+### Added
+- Optional proxy hardening, all off by default: `ALLOWED_ORIGIN` to restrict CORS (previously
+  wide open), `API_KEY` to require a matching `X-API-Key` header on every `/api/*` request
+  (the proxy would otherwise relay to any `tenantUrl` a caller supplies), and an in-memory
+  per-IP rate limiter on `/api/*` (`RATE_LIMIT_MAX`/`RATE_LIMIT_WINDOW_MS`, default 30
+  requests per 60s). `jira-critical-path.html` gained a "Proxy API Key" field that sends
+  `X-API-Key` on every proxy request when filled in.
+
 ## [1.3.0] - 2026-09-03
 
 ### Added
