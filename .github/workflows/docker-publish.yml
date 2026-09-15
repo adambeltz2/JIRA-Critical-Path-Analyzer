@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   build-and-push:
@@ -15,8 +16,19 @@ jobs:
       - name: Derive image tags
         id: meta
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/jira-critical-path-analyzer"
+          TAGS="$IMAGE:latest"
+          # Manual workflow_dispatch runs (e.g. to resync the Docker Hub README) push only
+          # :latest, since GITHUB_REF_NAME there is a branch, not a version.
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            TAGS="$(printf '%s\n%s' "$TAGS" "$IMAGE:$VERSION")"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -33,9 +45,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/jira-critical-path-analyzer:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/jira-critical-path-analyzer:${{ steps.meta.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
 
       - name: Sync README to Docker Hub
         uses: peter-evans/dockerhub-description@v4
