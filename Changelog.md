@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.5.0] - 2026-09-21
+
+### Fixed
+- Docker Hub image was amd64-only (`no matching manifest for linux/arm64/v8` when pulled on
+  Apple Silicon). `.github/workflows/docker-publish.yml` now builds and pushes both
+  `linux/amd64` and `linux/arm64` via `docker/setup-qemu-action` + `platforms:
+  linux/amd64,linux/arm64` on `docker/build-push-action`. Updated the manual publish steps
+  in `SETUP.md` to the equivalent `docker buildx build --platform ... --push` so a manual
+  republish doesn't overwrite the multi-arch manifest with a single-arch one.
+
 ## [1.4.0] - 2026-09-15
 
 ### Added
