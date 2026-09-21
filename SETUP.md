@@ -169,21 +169,28 @@ for anyone.
    docker login
    ```
 
-3. **Build the image**, tagged with your Docker Hub username/repo:
+3. **Set up a multi-platform builder** (one-time, if you don't already have one — plain
+   `docker build` only builds for your own machine's architecture, which is why an image
+   built on an amd64 CI runner or amd64 laptop has no `linux/arm64` manifest and fails to
+   pull on Apple Silicon with `no matching manifest for linux/arm64/v8`):
    ```bash
-   docker build -t <your-dockerhub-username>/jira-critical-path-analyzer:latest .
+   docker buildx create --use --name multiarch 2>/dev/null || docker buildx use multiarch
    ```
 
-   To also tag a specific version (recommended — pin to the app version in
-   `jira-critical-path.html`'s `APP_VERSION` constant, e.g. `1.9.0`):
+4. **Build and push for both architectures in one step** (multi-platform manifest lists must
+   be pushed directly — `buildx` can't build multi-arch and load it locally first):
    ```bash
-   docker build \
+   docker buildx build --platform linux/amd64,linux/arm64 \
      -t <your-dockerhub-username>/jira-critical-path-analyzer:latest \
      -t <your-dockerhub-username>/jira-critical-path-analyzer:1.9.0 \
-     .
+     --push .
    ```
+   Swap `1.9.0` for the current app version (`jira-critical-path.html`'s `APP_VERSION`
+   constant), or drop that `-t` line to only push `:latest`.
 
-4. **(Optional) Test the image locally before pushing:**
+5. **(Optional) Test the image locally before or after pushing** — this pulls/runs only your
+   own machine's architecture, so it's a fine functional smoke test even though it doesn't
+   exercise the other platform:
    ```bash
    docker run -d --name jira-analyzer-test -p 3000:3000 \
      <your-dockerhub-username>/jira-critical-path-analyzer:latest
@@ -191,24 +198,24 @@ for anyone.
    docker stop jira-analyzer-test && docker rm jira-analyzer-test
    ```
 
-5. **Push to Docker Hub:**
+6. **Verify both platforms published:**
    ```bash
-   docker push <your-dockerhub-username>/jira-critical-path-analyzer:latest
-   docker push <your-dockerhub-username>/jira-critical-path-analyzer:1.9.0
+   docker buildx imagetools inspect <your-dockerhub-username>/jira-critical-path-analyzer:latest
    ```
+   The output should list both `linux/amd64` and `linux/arm64` under Manifests. You can also
+   visit `https://hub.docker.com/r/<your-dockerhub-username>/jira-critical-path-analyzer` to
+   confirm the tag(s) are listed.
 
-6. **Verify:** visit `https://hub.docker.com/r/<your-dockerhub-username>/jira-critical-path-analyzer`
-   and confirm the tag(s) are listed.
-
-Anyone can now run it with the `docker run` command from Option 1, substituting your
-Docker Hub username.
+Anyone can now run it with the `docker run` command from Option 1, on either amd64 or arm64
+(e.g. Apple Silicon) hosts, substituting your Docker Hub username.
 
 > The steps above are for a manual, one-off publish. This repo also has an automated path:
 > [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) builds and
 > pushes `<your-dockerhub-username>/jira-critical-path-analyzer:latest` and
-> `:<version>` whenever a `v*` tag is pushed (e.g. `git tag v1.9.0 && git push origin v1.9.0`).
-> It requires two repo secrets under **Settings → Secrets and variables → Actions**:
-> `DOCKERHUB_USERNAME` (your Docker Hub username) and `DOCKERHUB_TOKEN` (a Docker Hub
+> `:<version>` — for both `linux/amd64` and `linux/arm64` via QEMU + Buildx — whenever a
+> `v*` tag is pushed (e.g. `git tag v1.9.0 && git push origin v1.9.0`). It requires two repo
+> secrets under **Settings → Secrets and variables → Actions**: `DOCKERHUB_USERNAME` (your
+> Docker Hub username) and `DOCKERHUB_TOKEN` (a Docker Hub
 > [access token](https://hub.docker.com/settings/security), not your account password —
 > scope it to Read & Write on this repo only). Until those secrets are set, the workflow
 > run will fail at the login step; the manual steps above remain the fallback.
